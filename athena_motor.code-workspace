@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "athena_motor_firmware"
+		},
+		{
+			"path": "athena_motor_driver"
+		}
+	],
+	"settings": {}
+}

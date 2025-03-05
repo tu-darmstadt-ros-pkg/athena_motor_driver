@@ -1,0 +1,12 @@
+launch:
+  - arg:
+      name: name
+      default: athena_motor_driver
+      description: node name
+  - node:
+      pkg: athena_motor_driver
+      exec: athena_motor_driver
+      name: "$(var name)"
+      output: screen
+      param:
+        - from: $(find-pkg-share athena_motor_driver)/config/params.yaml
