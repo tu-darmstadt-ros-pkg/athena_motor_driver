@@ -7,7 +7,7 @@ class MotorComm;
 
 // In m/s^2. To reach 1U/s=2*pi rad/s in 0.5 seconds, acceleration would be 2m/s^2
 const float MAX_ACCELERATION = 8.0;
-const float MAX_DECELERATION = 30.0;
+const float MAX_DECELERATION = 24.0;
 
 class MotorController
 {

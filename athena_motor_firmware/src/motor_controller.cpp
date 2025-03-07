@@ -79,18 +79,18 @@ int sign( float value )
 MotorCommCommand computeMotorCommand( float velocity ) {
   MotorCommCommand command;
   if ( std::abs( velocity ) < 1E-4 ) {
-    command.mode = MotorMode::BRAKE;
+    command.mode = MotorMode::FOC;
     command.velocity = 0;
-    command.k_w = 0;
+    command.k_w = 50;
   } else {
     command.mode = MotorMode::FOC;
     command.velocity = velocity;
     if (std::abs(velocity) > 20) {
-      command.k_w = 0.5;
+      command.k_w = 1;
     } else if (std::abs(velocity) > 10) {
-      command.k_w = 2;
+      command.k_w = 4;
     } else {
-      command.k_w = 10;
+      command.k_w = 15;
     }
   }
   command.torque = 0;
