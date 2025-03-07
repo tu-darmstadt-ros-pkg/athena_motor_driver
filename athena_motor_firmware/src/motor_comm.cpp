@@ -117,10 +117,14 @@ MotorCommStatus MotorComm::readStatus()
   buffer[0] = 0xFE;
   buffer[1] = 0xEE;
   elapsedMicros time;
-  while ( serial_->read() != 0xFE && serial_->peek() != 0xEE ) {
+  while ( serial_->available() < 2 || serial_->read() != 0xFE || serial_->peek() != 0xEE ) {
     if ( time > 100 ) {
       return result;
     }
+  }
+  while ( serial_->available() < 77 ) {
+    if ( time > 500 )
+      return result;
   }
   serial_->readBytes( buffer + 1, 77 );
   uint32_t crc = crc32_core( (uint32_t *)buffer, 74 / sizeof( uint32_t ) );
