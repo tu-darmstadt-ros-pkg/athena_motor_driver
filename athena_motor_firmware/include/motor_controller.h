@@ -1,6 +1,6 @@
 #include <Arduino.h>
 
-#include "../../athena_motor_interface/athena_motor_interfaces.h"
+#include "../../athena_motor_interface/include/athena_motor_interface/athena_motor_interfaces.h"
 #include <memory>
 
 class MotorComm;
