@@ -1,5 +1,6 @@
 #include <Arduino.h>
 
+#include "pid_controller.h"
 #include "../../athena_motor_interface/include/athena_motor_interface/athena_motor_interfaces.h"
 #include <memory>
 
@@ -46,7 +47,15 @@ private:
   elapsedMillis time_since_last_command_ = 0;
   bool has_new_status_ = false;
 
+  PIDController left_pid_controller_;
+  PIDController right_pid_controller_;
   FullMotorStatus motor_status_;
+  struct {
+    elapsedMillis front_left;
+    elapsedMillis front_right;
+    elapsedMillis rear_left;
+    elapsedMillis rear_right;
+  } status_age;
   std::shared_ptr<MotorComm> front_motor_comm_;
   std::shared_ptr<MotorComm> back_motor_comm_;
 };

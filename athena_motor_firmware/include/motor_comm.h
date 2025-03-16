@@ -12,10 +12,10 @@ struct MotorCommCommand {
   float velocity = 0;
   float position = 0;
 
-  //! Join stiffness coefficient
+  //! Joint stiffness coefficient
   //! When transmitting, this is multiplied by 2048 and transmitted as integer
   float k_p = 0;
-  //! Join stiffness coefficient
+  //! Joint velocity coefficient
   //! When transmitting, this is multiplied by 2048 and transmitted as integer
   float k_w = 0;
 };

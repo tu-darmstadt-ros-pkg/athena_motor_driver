@@ -18,6 +18,7 @@ DiffDriveController::DiffDriveController( const rclcpp::Node::SharedPtr &node )
                                                << wheel_separation_ << " and wheel radius "
                                                << wheel_radius_ );
 }
+
 MotorCommand DiffDriveController::computeMotorCommand( double linear, double angular )
 {
   double left_velocity = linear - angular * wheel_separation_ / 2;

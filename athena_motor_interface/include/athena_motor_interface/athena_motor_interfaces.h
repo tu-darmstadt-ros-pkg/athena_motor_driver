@@ -33,9 +33,15 @@ void serialize( const MotorCommand &command, std::vector<uint8_t> &buffer, int o
 
 struct MotorStatus {
   bool valid = false;
-  enum Mode : uint8_t { INVALID, BRAKE, FOC, CALIBRATE } mode;
+
+  enum class Error : uint8_t {
+    NO_ERROR = 0, // TODO: Find out other error codes
+  };
+
+  enum class Mode : uint8_t { INVALID, BRAKE, FOC, CALIBRATE } mode;
+
   int8_t temperature;
-  uint8_t error_code;
+  Error error;
 
   float torque;
   float velocity;
@@ -117,8 +123,8 @@ inline void MotorStatus::_serialize( uint8_t *buffer ) const
   buffer++;
   *buffer = temperature;
   buffer++;
-  *buffer = error_code;
-  buffer++;
+  *reinterpret_cast<decltype( error ) *>( buffer ) = error;
+  buffer += sizeof( error );
   impl::serialize( torque, buffer );
   buffer += sizeof( float );
   impl::serialize( velocity, buffer );
@@ -143,8 +149,8 @@ inline MotorStatus MotorStatus::deserialize( const uint8_t *buffer )
   buffer++;
   status.temperature = *buffer;
   buffer++;
-  status.error_code = *buffer;
-  buffer++;
+  status.error = *reinterpret_cast<const decltype( error ) *>( buffer );
+  buffer += sizeof( status.error );
   impl::deserialize( buffer, status.torque );
   buffer += sizeof( float );
   impl::deserialize( buffer, status.velocity );
@@ -200,10 +206,12 @@ inline void writeHeader( uint8_t *&buffer, CommandType type )
 inline void serialize( float value, uint8_t *buffer )
 {
   auto data = reinterpret_cast<uint32_t *>( buffer );
+
   union {
     float value;
     uint32_t data;
   } tmp;
+
   tmp.value = value;
   *data = htole32( tmp.data );
 }
@@ -211,10 +219,12 @@ inline void serialize( float value, uint8_t *buffer )
 inline void deserialize( const uint8_t *buffer, float &value )
 {
   auto data = reinterpret_cast<const uint32_t *>( buffer );
+
   union {
     float value;
     uint32_t data;
   } tmp;
+
   tmp.data = le32toh( *data );
   value = tmp.value;
 }
