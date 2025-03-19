@@ -152,7 +152,9 @@ void MotorController::update()
         ( motor_status_.front_left.velocity + motor_status_.rear_left.velocity ) / 2;
     float current_right_velocity =
         ( motor_status_.front_right.velocity + motor_status_.rear_right.velocity ) / 2;
+    left_command.mode = MotorMode::FOC;
     left_command.torque = left_pid_controller_.computeTorque( left_velocity_, current_left_velocity );
+    right_command.mode = MotorMode::FOC;
     right_command.torque =
         right_pid_controller_.computeTorque( right_velocity_, current_right_velocity );
   }
