@@ -11,9 +11,9 @@ namespace athena_motor_driver
 DiffDriveController::DiffDriveController( const rclcpp::Node::SharedPtr &node )
 {
   parameters_.push_back( hector::createReconfigurableParameter(
-      node, "wheel_separation", wheel_separation_, "Distance between the wheels" ) );
-  parameters_.push_back( hector::createReconfigurableParameter( node, "wheel_radius", wheel_radius_,
-                                                                "Radius of the wheels" ) );
+      node, "wheel_separation", std::ref( wheel_separation_ ), "Distance between the wheels" ) );
+  parameters_.push_back( hector::createReconfigurableParameter(
+      node, "wheel_radius", std::ref( wheel_radius_ ), "Radius of the wheels" ) );
   RCLCPP_DEBUG_STREAM( node->get_logger(), "DiffDriveController initialized with wheel separation "
                                                << wheel_separation_ << " and wheel radius "
                                                << wheel_radius_ );

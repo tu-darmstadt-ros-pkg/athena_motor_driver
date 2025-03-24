@@ -20,9 +20,9 @@ AthenaMotorDriver::AthenaMotorDriver( const rclcpp::NodeOptions &options )
   declare_readonly_parameter( "port_name", port_name_, "Serial port name" );
   declare_readonly_parameter( "baud_rate", baud_rate_, "Serial baud rate" );
   declare_reconfigurable_parameter(
-      "controller", controller_type_, "Controller type",
-      hector::ReconfigurableParameterOptions<std::string>()
-          .additionalConstraints( "Allowed values: diff_drive" )
+      "controller", std::ref( controller_type_ ), "Controller type",
+      hector::ParameterOptions<std::string>()
+          .setAdditionalConstraints( "Allowed values: diff_drive" )
           .onValidate( []( const auto &value ) { return value == "diff_drive"; } )
           .onUpdate( [this]( const std::string &value ) { setupController( value ); } ) );
 
@@ -62,8 +62,8 @@ void updateStatus( athena_motor_interface::msg::MotorStatus &msg, const MotorSta
   if ( !status.valid )
     return;
   msg.valid = status.valid;
-  msg.mode = status.mode;
-  msg.error_code = status.error_code;
+  msg.mode = static_cast<uint8_t>( status.mode );
+  msg.error_code = static_cast<uint8_t>( status.error );
   msg.temperature = status.temperature;
   msg.torque = status.torque;
   msg.velocity = status.velocity;
@@ -133,9 +133,10 @@ void AthenaMotorDriver::update()
     setupSerial();
   }
 }
+
 void AthenaMotorDriver::setupController( const std::string &controller_type )
 {
-  auto node = std::shared_ptr<rclcpp::Node>(this, [](const rclcpp::Node *) {});
+  auto node = std::shared_ptr<rclcpp::Node>( this, []( const rclcpp::Node * ) { } );
   if ( controller_type == "diff_drive" ) {
     controller_ = std::make_shared<DiffDriveController>( node );
   }

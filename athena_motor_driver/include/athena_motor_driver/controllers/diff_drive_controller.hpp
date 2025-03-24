@@ -19,7 +19,7 @@ public:
   MotorCommand computeMotorCommand( double linear, double angular ) override;
 
 private:
-  std::vector<hector::ReconfigurableParameterSubscription> parameters_;
+  std::vector<hector::ParameterSubscription> parameters_;
   double wheel_radius_ = 0.075;
   double wheel_separation_ = 0.4;
 };
