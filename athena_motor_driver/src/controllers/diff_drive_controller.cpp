@@ -26,6 +26,6 @@ MotorCommand DiffDriveController::computeMotorCommand( double linear, double ang
   // Velocity is now in m/s, convert to rad/s using v = w * r  -->  w = v / r
   left_velocity /= wheel_radius_;
   right_velocity /= wheel_radius_;
-  return { float( left_velocity ), float( right_velocity ) };
+  return MotorCommand::Velocity( float( left_velocity ), float( right_velocity ) );
 }
 } // namespace athena_motor_driver

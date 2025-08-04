@@ -1,0 +1,10 @@
+PIDDebugData left_velocity_pid
+PIDDebugData right_velocity_pid
+PIDDebugData left_position_pid
+PIDDebugData right_position_pid
+MotorStatusDebugData status
+uint8 error_code
+uint16 average_loop_time_us
+
+uint8 NO_ERROR = 0
+uint8 ERROR_MOTOR_NOT_RESPONDING = 1

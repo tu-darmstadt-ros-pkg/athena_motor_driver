@@ -6,8 +6,12 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  msg/DebugData.msg
   msg/FullMotorStatus.msg
   msg/MotorStatus.msg
+  msg/MotorStatusDebugData.msg
+  msg/PIDDebugData.msg
+  msg/TorqueCommand.msg
   DEPENDENCIES
   builtin_interfaces
 )

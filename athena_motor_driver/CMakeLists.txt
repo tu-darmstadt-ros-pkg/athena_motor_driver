@@ -12,7 +12,7 @@ find_package(hector_ros2_utils REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
-find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(athena_motor_interface REQUIRED)
 
 find_package(PkgConfig)
@@ -43,7 +43,7 @@ ament_target_dependencies(${TARGET_NAME}
   rclcpp
   rclcpp_components
   rclcpp_lifecycle
-  std_msgs
+  std_srvs
   SERIAL
 )
 

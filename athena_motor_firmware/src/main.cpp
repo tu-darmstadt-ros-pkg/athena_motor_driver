@@ -1,22 +1,25 @@
 #include <Arduino.h>
+#include <elapsedMillis.h>
+#include <usb_serial.h>
 
-#define MAIN_LOOP_DELAY_IN_US 1000
-
-#include "host_comm.h"
+#include "athena_motor_interface/athena_motor_interfaces.h"
+#include "crosstalk_teensy_usb_serial_wrapper.hpp"
 #include "motor_comm.h"
 #include "motor_controller.h"
 #include "status_led.h"
 
-const int MAX_TIME_SINCE_LAST_COMMAND_IN_MILLISECONDS = 200;
-const int MAX_CYCLES_SINCE_LAST_COMMAND =
-    MAX_TIME_SINCE_LAST_COMMAND_IN_MILLISECONDS * 1000 / MAIN_LOOP_DELAY_IN_US;
+constexpr int MAIN_LOOP_DELAY_IN_US = 2000;
+constexpr int MAX_TIME_SINCE_LAST_COMMAND_IN_MILLISECONDS = 200;
 
-HostComm host_comm;
-int cycles_since_last_command = 0;
+crosstalk::CrossTalker<16384, 512>
+    host_comm( std::make_unique<crosstalk::TeensyUSBSerialWrapper>( Serial ) );
+elapsedMillis time_since_last_command = 0;
 MotorController motor_controller;
 IntervalTimer motor_timer;
 
 FullMotorStatus motor_status;
+
+void reboot() { SCB_AIRCR = 0x05FA0004; }
 
 void motorControlLoop();
 
@@ -24,59 +27,113 @@ void setup()
 {
   pinMode( LED_BUILTIN, OUTPUT );
   digitalWrite( LED_BUILTIN, HIGH );
-  // Set UART_CLK_SEL bit to 0 to enable higher baud rates
-  CCM_CSCDR1 = ( CCM_CSCDR1 & ~CCM_CSCDR1_UART_CLK_SEL );
-  host_comm.init();
+  delay( 20 );
+  Serial.begin( BAUD_RATE );
   auto front_comm = std::make_shared<MotorComm>( &Serial1, 2 );
   auto back_comm = std::make_shared<MotorComm>( &Serial2, 9 );
   motor_controller.init( front_comm, back_comm );
   // motor_timer.priority( 0 );
   // motor_timer.begin( motorControlLoop, 1000 );
+  motor_timer.begin( motorControlLoop, MAIN_LOOP_DELAY_IN_US );
 
   digitalWrite( LED_BUILTIN, LOW );
 }
 
+FullMotorStatus full_motor_status;
+
 void motorControlLoop()
 {
-  motor_controller.update();
-  if ( motor_controller.hasNewStatus() ) {
-    FullMotorStatus new_status = motor_controller.status();
-    if ( new_status.front_left.valid )
-      motor_status.front_left = new_status.front_left;
-    if ( new_status.front_right.valid )
-      motor_status.front_right = new_status.front_right;
-    if ( new_status.rear_left.valid )
-      motor_status.rear_left = new_status.rear_left;
-    if ( new_status.rear_right.valid )
-      motor_status.rear_right = new_status.rear_right;
-    host_comm.sendStatus( motor_status );
+  if ( time_since_last_command >= MAX_TIME_SINCE_LAST_COMMAND_IN_MILLISECONDS ) {
+    motor_controller.stop();
+    status_led.speed = StatusLED::SLOW;
   }
+  full_motor_status = motor_controller.update();
 }
+
+MotorError::Error last_error;
+elapsedMicros loop_timer;
+bool enable_debug = false;
+MeanFilter<uint32_t, 10> average_loop_time_filter;
 
 void loop()
 {
-  delayMicroseconds( MAIN_LOOP_DELAY_IN_US );
-  if ( host_comm.hasCommand() ) {
-    switch ( host_comm.getType() ) {
-    case CommandType::MOTOR_COMMAND: {
-      MotorCommand command = host_comm.getMotorCommand();
-      motor_controller.setVelocities( command.left_velocity, command.right_velocity );
-      cycles_since_last_command = 0;
+  loop_timer = 0;
+  host_comm.processSerialData();
+  if ( host_comm.available() > 0 )
+    host_comm.skip();
+  while ( host_comm.hasObject() ) {
+    switch ( host_comm.getObjectId() ) {
+    case crosstalk::object_id<TeensyRebootCommand>(): {
+      TeensyRebootCommand command;
+      if ( host_comm.readObject( command ) != crosstalk::ReadResult::Success ) {
+        break;
+      }
+      host_comm.sendObject( AckCommand{ CommandType::TEENSY_REBOOT } );
+      delay( 10 );
+      reboot();
+      break;
+    }
+    case crosstalk::object_id<MotorCommand>(): {
+      MotorCommand command;
+      if ( host_comm.readObject( command ) != crosstalk::ReadResult::Success ) {
+        break;
+      }
+      motor_controller.setCommand( command );
+      time_since_last_command = 0;
       status_led.speed = StatusLED::FAST;
+      host_comm.sendObject( AckCommand{ CommandType::MOTOR_COMMAND } );
       break;
     }
-    case CommandType::NONE:
+    case crosstalk::object_id<ChangePIDGainsCommand>(): {
+      ChangePIDGainsCommand command;
+      if ( host_comm.readObject( command ) != crosstalk::ReadResult::Success ) {
+        break;
+      }
+      motor_controller.setVelocityPIDGains( command.left_velocity_pid_gains,
+                                            command.right_velocity_pid_gains );
+      motor_controller.setPositionPIDGains( command.left_position_pid_gains,
+                                            command.right_position_pid_gains );
+      time_since_last_command = 0;
+      status_led.speed = StatusLED::FAST;
+      host_comm.sendObject( AckCommand{ CommandType::CHANGE_PID_GAINS } );
+      break;
+    }
+    case crosstalk::object_id<UpdateSettings>(): {
+      UpdateSettings settings;
+      if ( host_comm.readObject( settings ) != crosstalk::ReadResult::Success ) {
+        break;
+      }
+      enable_debug = settings.enable_debug;
+      motor_controller.setDisableAccelerationLimiting( settings.disable_acceleration_limiting );
+      host_comm.sendObject( AckCommand{ CommandType::UPDATE_SETTINGS } );
+      break;
+    }
+    default:
       // Do nothing
+      host_comm.skipObject();
       break;
     }
+    if ( host_comm.available() > 0 )
+      host_comm.skip();
   }
-  motorControlLoop();
+
+  host_comm.sendObject( full_motor_status );
+
+  if ( const auto error = motor_controller.getError();
+       error != MotorError::Error::NO_ERROR && error != last_error ) {
+    host_comm.sendObject( MotorError{ error } );
+    last_error = error;
+  }
+  if ( enable_debug ) {
+    auto debug_data = motor_controller.debugData();
+    debug_data.average_loop_time_us = average_loop_time_filter.getMean();
+    host_comm.sendObject( debug_data );
+  }
   status_led.update();
 
-  if ( ++cycles_since_last_command >= MAX_CYCLES_SINCE_LAST_COMMAND ) {
-    cycles_since_last_command = MAX_CYCLES_SINCE_LAST_COMMAND; // Avoid overflow
-    motor_controller.stop();
-    status_led.speed = StatusLED::SLOW;
+  average_loop_time_filter.addValue( loop_timer );
+  int delay_time = MAIN_LOOP_DELAY_IN_US - loop_timer;
+  if ( delay_time <= 0 )
     return;
-  }
+  delayMicroseconds( delay_time );
 }

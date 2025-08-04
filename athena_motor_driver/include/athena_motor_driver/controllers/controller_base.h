@@ -5,8 +5,8 @@
 #ifndef ATHENA_MOTOR_DRIVER_CONTROLLER_BASE_H
 #define ATHENA_MOTOR_DRIVER_CONTROLLER_BASE_H
 
-#include <rclcpp/rclcpp.hpp>
 #include <athena_motor_interface/athena_motor_interfaces.h>
+#include <rclcpp/rclcpp.hpp>
 
 namespace athena_motor_driver
 {
@@ -19,6 +19,6 @@ public:
 
   virtual MotorCommand computeMotorCommand( double linear, double angular ) = 0;
 };
-}
+} // namespace athena_motor_driver
 
 #endif // ATHENA_MOTOR_DRIVER_CONTROLLER_BASE_H

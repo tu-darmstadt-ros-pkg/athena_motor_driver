@@ -12,12 +12,12 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <build_depend>hector_ros2_utils</build_depend>
   <depend>athena_motor_interface</depend>
   <depend>geometry_msgs</depend>
-  <depend>hector_ros2_utils</depend>
+  <depend>libserial-dev</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
-  <depend>libserial-dev</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

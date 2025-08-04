@@ -28,21 +28,30 @@ struct MotorCommStatus {
   int error_code;
 
   float torque;
-  float velocity;
+  float velocity_high;
+  float velocity_low;
   float position;
   float acceleration;
 };
 
-// Only tested for A1, B1Motor is called different to avoid conflict with Binary.h
-enum class MotorType { A1, B1Motor };
+// Only tested for A1
+enum class MotorType { A1Motor, B1Motor, GO_M8010_6_Motor };
 
 class MotorComm
 {
 public:
-  MotorComm( HardwareSerialIMXRT *serial, int direction_pin, MotorType type = MotorType::A1 );
+  MotorComm( HardwareSerialIMXRT *serial, int direction_pin, MotorType type = MotorType::A1Motor );
 
   void sendReceive( const MotorCommCommand &command, MotorCommStatus &status );
-  void sendReceive( const std::vector<MotorCommCommand> &commands, std::vector<MotorCommStatus> &statuses );
+  void sendReceive( const MotorCommCommand &left_command, const MotorCommCommand &right_command,
+                    MotorCommStatus &left_status, MotorCommStatus &right_status );
+
+  void resetComm()
+  {
+    serial_->clear();
+    serial_->clearReadError();
+    serial_->clearWriteError();
+  }
 
 private:
   MotorCommStatus readStatus();
@@ -52,6 +61,7 @@ private:
   int direction_pin_;
   MotorType type_;
 
-  uint8_t send_buffer_[3 * 34];
+  uint8_t send_buffer_[4 * sizeof( MasterComdDataV3 )];
   uint8_t receive_buffer_[256];
+  uint8_t status_buffer_[78];
 };

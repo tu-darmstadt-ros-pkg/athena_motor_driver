@@ -1,263 +1,196 @@
 #ifndef ATHENA_MOTOR_INTERFACES_H
 #define ATHENA_MOTOR_INTERFACES_H
 
-#include <cstddef>
-#include <cstdint>
-#include <endian.h>
-#include <vector>
+#include "./crosstalk.hpp"
 
 const int BAUD_RATE = 115200;
-const char START_BYTE = 0x42;
 
 enum class CommandType : uint8_t {
-  NONE = 0,
-  MOTOR_COMMAND = 0b11011,
-  MOTOR_STATUS = 0b00101,
-  MOTOR_ACK = 0b01010,
-  MOTOR_ERROR = 0b10110
+  INVALID = 0,
+  MOTOR_COMMAND = 1,
+  MOTOR_ERROR = 2,
+  CHANGE_PID_GAINS = 3,
+  MOTOR_STATUS = 4,
+  FULL_MOTOR_STATUS = 5,
+  UPDATE_SETTINGS = 6,
+  TEENSY_REBOOT = 8,
 };
+
+struct AckCommand {
+  CommandType type;
+};
+
+REFL_AUTO( type( AckCommand, crosstalk::id( 0 ) ), field( type ) )
 
 struct MotorCommand {
-  float left_velocity;
-  float right_velocity;
-  bool valid = false;
+  enum class MotorMode : uint8_t { BRAKE, VELOCITY, TORQUE };
+  MotorMode mode = MotorMode::BRAKE;
+  float left = 0.f;
+  float right = 0.f;
 
-  static constexpr size_t get_size() { return sizeof( float ) * 2 + 1; }
+  MotorCommand() = default;
 
-  void _serialize( uint8_t *buffer ) const;
+  static MotorCommand Velocity( float left, float right )
+  {
+    MotorCommand command;
+    command.mode = MotorMode::VELOCITY;
+    command.left = left;
+    command.right = right;
+    return command;
+  }
 
-  static MotorCommand deserialize( const uint8_t *buffer );
+  static MotorCommand Torque( float left, float right )
+  {
+    MotorCommand command;
+    command.mode = MotorMode::TORQUE;
+    command.left = left;
+    command.right = right;
+    return command;
+  }
 };
 
-void serialize( const MotorCommand &command, std::vector<uint8_t> &buffer, int offset = 0 );
+REFL_AUTO( type( MotorCommand, crosstalk::id( 1 ) ), field( mode ), field( left ), field( right ) )
+
+struct MotorError {
+  enum class Error : uint8_t { NO_ERROR = 0, STATUS_TIMEOUT = 1 };
+
+  Error error = Error::NO_ERROR;
+
+  MotorError() = default;
+
+  MotorError( Error error ) : error( error ) { }
+};
+
+REFL_AUTO( type( MotorError, crosstalk::id( 2 ) ), field( error ) )
+
+struct PIDGains {
+  float k_p = 0.f;
+  float k_i = 0.f;
+  float k_d = 0.f;
+
+  PIDGains() = default;
+
+  PIDGains( float k_p, float k_i, float k_d ) : k_p( k_p ), k_i( k_i ), k_d( k_d ) { }
+};
+
+REFL_AUTO( type( PIDGains ), field( k_p ), field( k_i ), field( k_d ) )
+
+struct ChangePIDGainsCommand {
+  PIDGains left_velocity_pid_gains;
+  PIDGains right_velocity_pid_gains;
+  PIDGains left_position_pid_gains;
+  PIDGains right_position_pid_gains;
+
+  ChangePIDGainsCommand() = default;
+
+  ChangePIDGainsCommand( const PIDGains &left_velocity_pid_gains,
+                         const PIDGains &right_velocity_pid_gains,
+                         const PIDGains &left_position_pid_gains,
+                         const PIDGains &right_position_pid_gains )
+      : left_velocity_pid_gains( left_velocity_pid_gains ),
+        right_velocity_pid_gains( right_velocity_pid_gains ),
+        left_position_pid_gains( left_position_pid_gains ),
+        right_position_pid_gains( right_position_pid_gains )
+  {
+  }
+};
+
+REFL_AUTO( type( ChangePIDGainsCommand, crosstalk::id( 3 ) ), field( left_velocity_pid_gains ),
+           field( right_velocity_pid_gains ), field( left_position_pid_gains ),
+           field( right_position_pid_gains ) )
 
 struct MotorStatus {
-  bool valid = false;
-
   enum class Error : uint8_t {
     NO_ERROR = 0, // TODO: Find out other error codes
   };
 
-  enum class Mode : uint8_t { INVALID, BRAKE, FOC, CALIBRATE } mode;
+  enum class Mode : uint8_t { INVALID, BRAKE, FOC, CALIBRATE };
 
-  int8_t temperature;
-  Error error;
+  bool valid = false;
+  Mode mode = Mode::INVALID;
+  int8_t temperature = 0;
+  Error error = Error::NO_ERROR;
 
-  float torque;
-  float velocity;
-  float position;
-  float acceleration;
-
-  static constexpr size_t get_size() { return 4 + 4 * sizeof( float ) + 1; }
-
-  void _serialize( uint8_t *buffer ) const;
-
-  static MotorStatus deserialize( const uint8_t *buffer );
+  float target_velocity = 0;
+  float target_torque = 0;
+  float torque = 0;
+  //! The motor speed (high speed and low speed, no clue what that means, ask Unitree)
+  float velocity_high = 0;
+  float velocity_low = 0;
+  float position = 0;
+  float acceleration = 0;
+  uint32_t age_ms = UINT32_MAX;
 };
+
+REFL_AUTO( type( MotorStatus, crosstalk::id( 4 ) ), field( valid ), field( mode ),
+           field( temperature ), field( error ), field( target_velocity ), field( target_torque ),
+           field( torque ), field( velocity_high ), field( velocity_low ), field( position ),
+           field( acceleration ), field( age_ms ) )
 
 struct FullMotorStatus {
   MotorStatus front_left;
   MotorStatus front_right;
   MotorStatus rear_left;
   MotorStatus rear_right;
-
-  static constexpr size_t get_size() { return 4 * MotorStatus::get_size(); }
-
-  void _serialize( uint8_t *buffer ) const;
-
-  static FullMotorStatus deserialize( const uint8_t *buffer );
+  float velocity_left = 0;
+  float velocity_right = 0;
 };
 
-void serialize( const FullMotorStatus &command, std::vector<uint8_t> &buffer, int offset = 0 );
+REFL_AUTO( type( FullMotorStatus, crosstalk::id( 5 ) ), field( front_left ), field( front_right ),
+           field( rear_left ), field( rear_right ), field( velocity_left ), field( velocity_right ) )
 
-// Implementation
+struct UpdateSettings {
+  bool enable_debug = false;
+  bool disable_acceleration_limiting = false;
+};
 
-namespace impl
-{
-void writeHeader( uint8_t *&buffer, CommandType type );
+REFL_AUTO( type( UpdateSettings, crosstalk::id( 6 ) ), field( enable_debug ),
+           field( disable_acceleration_limiting ) )
 
-uint8_t crc8( const uint8_t *buffer, int count );
+struct PIDDebugData {
+  float goal = std::numeric_limits<float>::quiet_NaN();
+  float current = std::numeric_limits<float>::quiet_NaN();
+  float dt = std::numeric_limits<float>::quiet_NaN();
+  float error = std::numeric_limits<float>::quiet_NaN();
+  float derivative = std::numeric_limits<float>::quiet_NaN();
+  float integral = std::numeric_limits<float>::quiet_NaN();
+  float raw_output = std::numeric_limits<float>::quiet_NaN();
+  float output = std::numeric_limits<float>::quiet_NaN();
+};
 
-void serialize( float value, uint8_t *buffer );
-void deserialize( const uint8_t *buffer, float &value );
-} // namespace impl
+REFL_AUTO( type( PIDDebugData ), field( goal ), field( current ), field( dt ), field( error ),
+           field( derivative ), field( integral ), field( raw_output ), field( output ) )
 
-inline void MotorCommand::_serialize( uint8_t *buffer ) const
-{
-  uint8_t *start = buffer;
-  impl::serialize( left_velocity, buffer );
-  buffer += sizeof( float );
-  impl::serialize( right_velocity, buffer );
-  buffer += sizeof( float );
-  *buffer = impl::crc8( start, get_size() - 1 );
-}
+struct MotorStatusDebugData {
+  float freq_front_left = 0;
+  float freq_front_right = 0;
+  float freq_rear_left = 0;
+  float freq_rear_right = 0;
+};
 
-inline MotorCommand MotorCommand::deserialize( const uint8_t *buffer )
-{
-  uint8_t crc8 = impl::crc8( buffer, get_size() - 1 );
-  if ( crc8 != buffer[2 * sizeof( float )] ) {
-    return {};
-  }
-  MotorCommand command;
-  impl::deserialize( buffer, command.left_velocity );
-  buffer += sizeof( float );
-  impl::deserialize( buffer, command.right_velocity );
-  command.valid = true;
-  return command;
-}
+REFL_AUTO( type( MotorStatusDebugData ), field( freq_front_left ), field( freq_front_right ),
+           field( freq_rear_left ), field( freq_rear_right ) )
 
-inline void serialize( const MotorCommand &command, std::vector<uint8_t> &buffer, int offset )
-{
-  buffer.resize( offset + 2 + MotorCommand::get_size() );
-  auto *data = buffer.data() + offset;
-  impl::writeHeader( data, CommandType::MOTOR_COMMAND );
-  command._serialize( data );
-}
+struct MotorDebugData {
+  PIDDebugData left_velocity_pid;
+  PIDDebugData right_velocity_pid;
+  PIDDebugData left_position_pid;
+  PIDDebugData right_position_pid;
+  MotorStatusDebugData status;
+  enum class Error { NO_ERROR, NO_MOTOR_STATUS };
+  Error error;
+  uint16_t average_loop_time_us = 0;
+};
 
-inline void MotorStatus::_serialize( uint8_t *buffer ) const
-{
-  uint8_t *start = buffer;
-  *buffer = valid ? 1 : 0;
-  buffer++;
-  *buffer = static_cast<uint8_t>( mode );
-  buffer++;
-  *buffer = temperature;
-  buffer++;
-  *reinterpret_cast<decltype( error ) *>( buffer ) = error;
-  buffer += sizeof( error );
-  impl::serialize( torque, buffer );
-  buffer += sizeof( float );
-  impl::serialize( velocity, buffer );
-  buffer += sizeof( float );
-  impl::serialize( position, buffer );
-  buffer += sizeof( float );
-  impl::serialize( acceleration, buffer );
-  buffer += sizeof( float );
-  *buffer = impl::crc8( start, get_size() - 1 );
-}
+REFL_AUTO( type( MotorDebugData, crosstalk::id( 7 ) ), field( left_velocity_pid ),
+           field( right_velocity_pid ), field( left_position_pid ), field( right_position_pid ),
+           field( status ), field( error ), field( average_loop_time_us ) )
 
-inline MotorStatus MotorStatus::deserialize( const uint8_t *buffer )
-{
-  uint8_t crc8 = impl::crc8( buffer, get_size() - 1 );
-  if ( crc8 != buffer[get_size() - 1] ) {
-    return {};
-  }
-  MotorStatus status;
-  status.valid = *buffer == 1;
-  buffer++;
-  status.mode = static_cast<Mode>( *buffer );
-  buffer++;
-  status.temperature = *buffer;
-  buffer++;
-  status.error = *reinterpret_cast<const decltype( error ) *>( buffer );
-  buffer += sizeof( status.error );
-  impl::deserialize( buffer, status.torque );
-  buffer += sizeof( float );
-  impl::deserialize( buffer, status.velocity );
-  buffer += sizeof( float );
-  impl::deserialize( buffer, status.position );
-  buffer += sizeof( float );
-  impl::deserialize( buffer, status.acceleration );
-  return status;
-}
+struct TeensyRebootCommand {
+  uint8_t magic = 0xDE;
+  uint8_t command = 0xAD;
+};
 
-inline void FullMotorStatus::_serialize( uint8_t *buffer ) const
-{
-  front_left._serialize( buffer );
-  buffer += MotorStatus::get_size();
-  front_right._serialize( buffer );
-  buffer += MotorStatus::get_size();
-  rear_left._serialize( buffer );
-  buffer += MotorStatus::get_size();
-  rear_right._serialize( buffer );
-}
-
-inline FullMotorStatus FullMotorStatus::deserialize( const uint8_t *buffer )
-{
-  FullMotorStatus status;
-  status.front_left = MotorStatus::deserialize( buffer );
-  buffer += MotorStatus::get_size();
-  status.front_right = MotorStatus::deserialize( buffer );
-  buffer += MotorStatus::get_size();
-  status.rear_left = MotorStatus::deserialize( buffer );
-  buffer += MotorStatus::get_size();
-  status.rear_right = MotorStatus::deserialize( buffer );
-  return status;
-}
-
-inline void serialize( const FullMotorStatus &status, std::vector<uint8_t> &buffer, int offset )
-{
-  buffer.resize( offset + 2 + FullMotorStatus::get_size() );
-  auto *data = buffer.data() + offset;
-  impl::writeHeader( data, CommandType::MOTOR_STATUS );
-  status._serialize( data );
-}
-
-namespace impl
-{
-inline void writeHeader( uint8_t *&buffer, CommandType type )
-{
-  *buffer = START_BYTE;
-  buffer++;
-  *buffer = static_cast<uint8_t>( type );
-  buffer++;
-}
-
-inline void serialize( float value, uint8_t *buffer )
-{
-  auto data = reinterpret_cast<uint32_t *>( buffer );
-
-  union {
-    float value;
-    uint32_t data;
-  } tmp;
-
-  tmp.value = value;
-  *data = htole32( tmp.data );
-}
-
-inline void deserialize( const uint8_t *buffer, float &value )
-{
-  auto data = reinterpret_cast<const uint32_t *>( buffer );
-
-  union {
-    float value;
-    uint32_t data;
-  } tmp;
-
-  tmp.data = le32toh( *data );
-  value = tmp.value;
-}
-
-inline uint8_t crc8( const uint8_t *buffer, int count )
-{
-  static const unsigned char CRC_TABLE[] = {
-      0x00, 0x97, 0xB9, 0x2E, 0xE5, 0x72, 0x5C, 0xCB, 0x5D, 0xCA, 0xE4, 0x73, 0xB8, 0x2F, 0x01,
-      0x96, 0xBA, 0x2D, 0x03, 0x94, 0x5F, 0xC8, 0xE6, 0x71, 0xE7, 0x70, 0x5E, 0xC9, 0x02, 0x95,
-      0xBB, 0x2C, 0xE3, 0x74, 0x5A, 0xCD, 0x06, 0x91, 0xBF, 0x28, 0xBE, 0x29, 0x07, 0x90, 0x5B,
-      0xCC, 0xE2, 0x75, 0x59, 0xCE, 0xE0, 0x77, 0xBC, 0x2B, 0x05, 0x92, 0x04, 0x93, 0xBD, 0x2A,
-      0xE1, 0x76, 0x58, 0xCF, 0x51, 0xC6, 0xE8, 0x7F, 0xB4, 0x23, 0x0D, 0x9A, 0x0C, 0x9B, 0xB5,
-      0x22, 0xE9, 0x7E, 0x50, 0xC7, 0xEB, 0x7C, 0x52, 0xC5, 0x0E, 0x99, 0xB7, 0x20, 0xB6, 0x21,
-      0x0F, 0x98, 0x53, 0xC4, 0xEA, 0x7D, 0xB2, 0x25, 0x0B, 0x9C, 0x57, 0xC0, 0xEE, 0x79, 0xEF,
-      0x78, 0x56, 0xC1, 0x0A, 0x9D, 0xB3, 0x24, 0x08, 0x9F, 0xB1, 0x26, 0xED, 0x7A, 0x54, 0xC3,
-      0x55, 0xC2, 0xEC, 0x7B, 0xB0, 0x27, 0x09, 0x9E, 0xA2, 0x35, 0x1B, 0x8C, 0x47, 0xD0, 0xFE,
-      0x69, 0xFF, 0x68, 0x46, 0xD1, 0x1A, 0x8D, 0xA3, 0x34, 0x18, 0x8F, 0xA1, 0x36, 0xFD, 0x6A,
-      0x44, 0xD3, 0x45, 0xD2, 0xFC, 0x6B, 0xA0, 0x37, 0x19, 0x8E, 0x41, 0xD6, 0xF8, 0x6F, 0xA4,
-      0x33, 0x1D, 0x8A, 0x1C, 0x8B, 0xA5, 0x32, 0xF9, 0x6E, 0x40, 0xD7, 0xFB, 0x6C, 0x42, 0xD5,
-      0x1E, 0x89, 0xA7, 0x30, 0xA6, 0x31, 0x1F, 0x88, 0x43, 0xD4, 0xFA, 0x6D, 0xF3, 0x64, 0x4A,
-      0xDD, 0x16, 0x81, 0xAF, 0x38, 0xAE, 0x39, 0x17, 0x80, 0x4B, 0xDC, 0xF2, 0x65, 0x49, 0xDE,
-      0xF0, 0x67, 0xAC, 0x3B, 0x15, 0x82, 0x14, 0x83, 0xAD, 0x3A, 0xF1, 0x66, 0x48, 0xDF, 0x10,
-      0x87, 0xA9, 0x3E, 0xF5, 0x62, 0x4C, 0xDB, 0x4D, 0xDA, 0xF4, 0x63, 0xA8, 0x3F, 0x11, 0x86,
-      0xAA, 0x3D, 0x13, 0x84, 0x4F, 0xD8, 0xF6, 0x61, 0xF7, 0x60, 0x4E, 0xD9, 0x12, 0x85, 0xAB,
-      0x3C };
-  uint8_t crc = 0;
-  while ( count-- ) {
-    crc = crc ^ *buffer++;       // Apply Byte
-    crc = CRC_TABLE[crc & 0xFF]; // One round of 8-bits
-  }
-
-  return crc;
-}
-} // namespace impl
+REFL_AUTO( type( TeensyRebootCommand, crosstalk::id( 8 ) ), field( magic ), field( command ) )
 
 #endif // ATHENA_MOTOR_INTERFACES_H

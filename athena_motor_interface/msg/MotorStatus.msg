@@ -10,9 +10,14 @@ uint8 mode
 int8 temperature
 uint8 error_code
 
+float32 target_velocity
+float32 target_torque
+
 float32 torque
 # Velocity in rad/s
-float32 velocity
+# High and low speed are used by the Unitree motors, but it is not clear what the difference is.
+float32 velocity_high
+float32 velocity_low
 float32 position
 float32 acceleration
 
