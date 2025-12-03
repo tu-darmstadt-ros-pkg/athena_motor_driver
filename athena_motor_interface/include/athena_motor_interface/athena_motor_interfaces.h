@@ -80,6 +80,13 @@ struct ChangePIDGainsCommand {
   PIDGains right_velocity_pid_gains;
   PIDGains left_position_pid_gains;
   PIDGains right_position_pid_gains;
+  // Feed-forward control parameters for velocity control
+  // k_v: Velocity gain - proportional to target velocity
+  // k_s: Static friction gain - constant "push" to overcome static friction
+  float left_velocity_feed_forward_k_v = 0.0f;
+  float left_velocity_feed_forward_k_s = 0.0f;
+  float right_velocity_feed_forward_k_v = 0.0f;
+  float right_velocity_feed_forward_k_s = 0.0f;
 
   ChangePIDGainsCommand() = default;
 
@@ -97,7 +104,9 @@ struct ChangePIDGainsCommand {
 
 REFL_AUTO( type( ChangePIDGainsCommand, crosstalk::id( 3 ) ), field( left_velocity_pid_gains ),
            field( right_velocity_pid_gains ), field( left_position_pid_gains ),
-           field( right_position_pid_gains ) )
+           field( right_position_pid_gains ), field( left_velocity_feed_forward_k_v ),
+           field( left_velocity_feed_forward_k_s ), field( right_velocity_feed_forward_k_v ),
+           field( right_velocity_feed_forward_k_s ) )
 
 struct MotorStatus {
   enum class Error : uint8_t {

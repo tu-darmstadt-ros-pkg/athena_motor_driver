@@ -93,6 +93,11 @@ void loop()
                                             command.right_velocity_pid_gains );
       motor_controller.setPositionPIDGains( command.left_position_pid_gains,
                                             command.right_position_pid_gains );
+      motor_controller.setVelocityFeedForwardGains(
+          command.left_velocity_feed_forward_k_v, command.left_velocity_feed_forward_k_s,
+          command.right_velocity_feed_forward_k_v, command.right_velocity_feed_forward_k_s );
+
+      motor_controller.setPositionFeedForwardGains( 0.0f, 0.0f, 0.0f, 0.0f );
       time_since_last_command = 0;
       status_led.speed = StatusLED::FAST;
       host_comm.sendObject( AckCommand{ CommandType::CHANGE_PID_GAINS } );

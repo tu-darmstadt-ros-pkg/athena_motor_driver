@@ -21,6 +21,12 @@ void PIDController::setOutputLimits( float min_output, float max_output )
   max_output_ = max_output;
 }
 
+void PIDController::setFeedForwardGains( float k_v, float k_s )
+{
+  feed_forward_k_v_ = k_v;
+  feed_forward_k_s_ = k_s;
+}
+
 void PIDController::reset()
 {
   last_input_ = 0;
@@ -45,9 +51,17 @@ float PIDController::computeTorque( float goal, float current )
 
   float output = kp_ * error + ki_ * integral_ + kd_ * derivative;
   debug_data_.raw_output = output;
+
+  // Feed-forward control: Add physics-based estimate to reduce PID workload and stick-slip effects
+  // Formula: feed_forward = (target_velocity * k_v) + (sign(target_velocity) * k_s)
+  // k_v: Velocity gain - proportional to target velocity
+  // k_s: Static friction gain - constant "push" to overcome static friction (only when velocity != 0)
   if ( std::abs( goal ) > 0.1 ) {
-    output += ( std::signbit( goal ) ? -1 : 1 ) * 0.3f; // Feedforward term to avoid deadband
+    float feed_forward = goal * feed_forward_k_v_;
+    feed_forward += std::copysign( feed_forward_k_s_, goal );
+    output += feed_forward;
   }
+
   output = constrain( output, min_output_, max_output_ );
   output = constrain( output, last_output_ - max_output_change_, last_output_ + max_output_change_ );
 

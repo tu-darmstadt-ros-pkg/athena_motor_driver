@@ -22,6 +22,7 @@ private:
   std::vector<hector::ParameterSubscription> parameters_;
   double wheel_radius_ = 0.075;
   double wheel_separation_ = 0.4;
+  double rotational_amplification_ = 1.0;
 };
 } // namespace athena_motor_driver
 

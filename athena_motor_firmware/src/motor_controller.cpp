@@ -41,6 +41,23 @@ void MotorController::setVelocityPIDGains( const PIDGains &left_pid_gains,
                                                         right_pid_gains.k_d );
 }
 
+void MotorController::setVelocityFeedForwardGains( float left_k_v, float left_k_s, float right_k_v,
+                                                   float right_k_s )
+{
+  // Set feed-forward gains on velocity PID controllers (used when velocity > 0.1)
+  control_data_left_.velocity_pid_controller.setFeedForwardGains( left_k_v, left_k_s );
+  control_data_right_.velocity_pid_controller.setFeedForwardGains( right_k_v, right_k_s );
+}
+
+void MotorController::setPositionFeedForwardGains( float left_k_v, float left_k_s, float right_k_v,
+                                                   float right_k_s )
+{
+  // Set feed-forward gains on position PID controllers (used when velocity < 0.1)
+  // Note: For position control, goal is position, but feed-forward can still help with static friction
+  control_data_left_.position_pid_controller.setFeedForwardGains( left_k_v, left_k_s );
+  control_data_right_.position_pid_controller.setFeedForwardGains( right_k_v, right_k_s );
+}
+
 void MotorController::stop()
 {
   command_ = MotorCommand();
@@ -164,6 +181,7 @@ MotorController::Torque MotorController::computeTorque()
     right_torque = control_data_right_.velocity_pid_controller.computeTorque( velocity_.right,
                                                                               measured_velocity );
   }
+
   return { left_torque, right_torque };
 }
 

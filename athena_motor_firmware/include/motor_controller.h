@@ -34,6 +34,10 @@ public:
 
   void setVelocityPIDGains( const PIDGains &left_pid_gains, const PIDGains &right_pid_gains );
 
+  void setVelocityFeedForwardGains( float left_k_v, float left_k_s, float right_k_v, float right_k_s );
+
+  void setPositionFeedForwardGains( float left_k_v, float left_k_s, float right_k_v, float right_k_s );
+
   void setDisableAccelerationLimiting( bool disable ) { disable_acceleration_limiting_ = disable; }
 
   void stop();
