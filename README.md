@@ -1,6 +1,6 @@
 # Athena Motor Driver
 
-This repository contains the drivers and firmware for the Athena robot's motor controller.
+This repository contains the drivers and firmware for the [Athena](https://github.com/tu-darmstadt-ros-pkg/athena) robot's motor controller.
 
 ## Repository Structure
 
