@@ -6,4 +6,5 @@ float32 derivative
 float32 integral
 # Output before clamping
 float32 raw_output
+float32 feedforward
 float32 output

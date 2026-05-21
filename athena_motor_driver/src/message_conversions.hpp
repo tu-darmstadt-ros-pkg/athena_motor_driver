@@ -18,6 +18,7 @@ inline athena_motor_interface::msg::PIDDebugData toMsg( const PIDDebugData &pid_
   msg.derivative = pid_debug.derivative;
   msg.integral = pid_debug.integral;
   msg.raw_output = pid_debug.raw_output;
+  msg.feedforward = pid_debug.feed_forward;
   msg.output = pid_debug.output;
   return msg;
 }

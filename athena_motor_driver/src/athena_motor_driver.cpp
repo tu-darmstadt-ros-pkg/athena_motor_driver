@@ -160,6 +160,9 @@ void AthenaMotorDriver::update()
       command.left_velocity_feed_forward_k_s_rotational = left_velocity_feed_forward_k_s_rotational_;
       command.right_velocity_feed_forward_k_s_rotational =
           right_velocity_feed_forward_k_s_rotational_;
+      command.velocity_feed_forward_ramp_width = velocity_feed_forward_ramp_width_;
+      command.rotational_feed_forward_ramp_width = rotational_feed_forward_ramp_width_;
+      
       auto result = cross_talker_->sendObject( command );
       if ( result == crosstalk::WriteResult::Success ) {
         RCLCPP_INFO( get_logger(), "Sending request to update PID Gains." );
@@ -175,10 +178,11 @@ void AthenaMotorDriver::update()
                      right_position_pid_gains_.k_i, right_position_pid_gains_.k_d );
         RCLCPP_INFO( get_logger(),
                      "Velocity Feed-Forward:\n  Left: k_v=%f, k_s=%f, k_s_rotational=%f\n  Right: "
-                     "k_v=%f, k_s=%f, k_s_rotational=%f",
+                     "k_v=%f, k_s=%f, k_s_rotational=%f, ramp_width=%f, rotational_ramp_width=%f",
                      left_velocity_feed_forward_k_v_, left_velocity_feed_forward_k_s_,
                      left_velocity_feed_forward_k_s_rotational_, right_velocity_feed_forward_k_v_,
-                     right_velocity_feed_forward_k_s_, right_velocity_feed_forward_k_s_rotational_ );
+                     right_velocity_feed_forward_k_s_, right_velocity_feed_forward_k_s_rotational_,
+                     velocity_feed_forward_ramp_width_, rotational_feed_forward_ramp_width_ );
         RCLCPP_INFO( get_logger(), "You should see 'PID Gains updated.' next, if it worked." );
 
       } else {
@@ -414,6 +418,14 @@ void AthenaMotorDriver::declareMicroControllerParameters()
   declare_reconfigurable_parameter( "right_velocity_feed_forward.k_s_rotational",
                                     std::ref( right_velocity_feed_forward_k_s_rotational_ ),
                                     "Right velocity feed-forward rotational static friction gain",
+                                    pid_options );
+  declare_reconfigurable_parameter( "velocity_feed_forward_ramp_width",
+                                    std::ref( velocity_feed_forward_ramp_width_ ),
+                                    "Width of the ramp for velocity feed-forward control",
+                                    pid_options );
+  declare_reconfigurable_parameter( "rotational_feed_forward_ramp_width",
+                                    std::ref( rotational_feed_forward_ramp_width_ ),
+                                    "Width of the ramp for rotational feed-forward control",
                                     pid_options );
 }
 

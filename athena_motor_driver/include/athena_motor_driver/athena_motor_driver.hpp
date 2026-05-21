@@ -74,6 +74,8 @@ private:
   float right_velocity_feed_forward_k_s_ = 0.0f;
   float left_velocity_feed_forward_k_s_rotational_ = 0.0f;
   float right_velocity_feed_forward_k_s_rotational_ = 0.0f;
+  float velocity_feed_forward_ramp_width_ = 0.2f;
+  float rotational_feed_forward_ramp_width_ = 0.2f;
   bool pid_updated_ = false;
   bool debug_ = false;
   bool disable_acceleration_limiting_ = false;
