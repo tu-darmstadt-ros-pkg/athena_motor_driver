@@ -44,8 +44,8 @@ public:
   // --- Gain setters ---
   void setPositionPIDGains( float kp, float ki, float kd );
   void setVelocityPIDGains( float kp, float ki, float kd );
-  void setVelocityFeedForwardGains( float k_v, float k_s );
-  void setPositionFeedForwardGains( float k_v, float k_s );
+  void setVelocityFeedForwardGains( float k_v, float k_s, float ramp_width );
+  void setPositionFeedForwardGains( float k_v, float k_s, float ramp_width );
 
   // --- Accessors ---
   float filteredVelocity() const { return velocity_filter_.getFiltered(); }

@@ -16,7 +16,7 @@ public:
                  float max_output_change );
   void setGains( float kp, float ki, float kd );
   void setOutputLimits( float min_output, float max_output );
-  void setFeedForwardGains( float k_v, float k_s );
+  void setFeedForwardGains( float k_v, float k_s, float ramp_width );
   void reset();
 
   //! Compute the torque required to reach the goal velocity
@@ -43,6 +43,7 @@ private:
   // k_s: Static friction gain - constant "push" to overcome static friction
   float feed_forward_k_v_ = 0.0f;
   float feed_forward_k_s_ = 0.0f;
+  float feed_forward_ramp_width_ = 0.2f; // velocity band for smoothing feed-forward transitions
 };
 
 #endif // ATHENA_MOTOR_FIRMWARE_PID_CONTROLLER_H

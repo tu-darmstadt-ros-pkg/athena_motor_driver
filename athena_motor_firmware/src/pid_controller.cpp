@@ -22,10 +22,11 @@ void PIDController::setOutputLimits( float min_output, float max_output )
   max_output_ = max_output;
 }
 
-void PIDController::setFeedForwardGains( float k_v, float k_s )
+void PIDController::setFeedForwardGains( float k_v, float k_s, float ramp_width )
 {
   feed_forward_k_v_ = k_v;
   feed_forward_k_s_ = k_s;
+  feed_forward_ramp_width_ = ramp_width;
 }
 
 void PIDController::reset()
@@ -47,19 +48,38 @@ float PIDController::computeTorque( float goal, float current )
   }
 
   const float error = goal - current;
-  integral_ += error * dt;
-  const float derivative = dt <= 0 ? 0 : ( error - last_error_ ) / dt;
 
-  float output = kp_ * error + ki_ * integral_ + kd_ * derivative;
+  float p_term = kp_ * error;
+
+  // Calculate derivative term on measurement to reduce derivative kick from setpoint changes
+  const float derivative = dt <= 0 ? 0 : ( last_input_ - current ) / dt;
+  float d_term = kd_ * derivative;
+
+  // Anti-windup: Only integrate if not saturated, or if integrating reduces the saturation
+  float pre_integral_output = p_term + d_term + feed_forward_k_v_ * goal;
+  if ( pre_integral_output < max_output_ && pre_integral_output > min_output_ ) {
+    integral_ += error * dt;
+  } else if ( pre_integral_output >= max_output_ && error < 0 ) {
+    integral_ += error * dt; // Allow winding down
+  } else if ( pre_integral_output <= min_output_ && error > 0 ) {
+    integral_ += error * dt; // Allow winding down
+  }
+
+  float i_term = ki_ * integral_;
+
+  float output = p_term + i_term + d_term;
   debug_data_.raw_output = output;
 
-  // Feed-forward control: Add physics-based estimate to reduce PID workload and stick-slip effects
-  // Formula: feed_forward = (target_velocity * k_v) + (sign(target_velocity) * k_s)
-  // k_v: Velocity gain - proportional to target velocity
-  // k_s: Static friction gain - constant "push" to overcome static friction (only when velocity != 0)
+  // Feed-forward control
+  float feed_forward = 0.0f;
   if ( std::abs( goal ) > FEED_FORWARD_DEAD_ZONE ) {
-    float feed_forward = goal * feed_forward_k_v_;
-    feed_forward += std::copysign( feed_forward_k_s_, goal );
+    feed_forward = goal * feed_forward_k_v_;
+
+    float ramp_factor = ( feed_forward_ramp_width_ > 0.0f )
+                            ? std::min( 1.0f, std::abs( goal ) / feed_forward_ramp_width_ )
+                            : 0.0f;
+    feed_forward += std::copysign( feed_forward_k_s_ * ramp_factor, goal );
+
     output += feed_forward;
   }
 
@@ -77,6 +97,7 @@ float PIDController::computeTorque( float goal, float current )
   debug_data_.error = error;
   debug_data_.derivative = derivative;
   debug_data_.integral = integral_;
+  debug_data_.feed_forward = feed_forward;
   debug_data_.output = output;
 
   return output;

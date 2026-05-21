@@ -26,11 +26,13 @@ public:
 
   void setVelocityPIDGains( const PIDGains &left_pid_gains, const PIDGains &right_pid_gains );
 
-  void setVelocityFeedForwardGains( float left_k_v, float left_k_s, float right_k_v, float right_k_s );
+  void setVelocityFeedForwardGains( float left_k_v, float left_k_s, float right_k_v,
+                                    float right_k_s, float ramp_width );
 
-  void setPositionFeedForwardGains( float left_k_v, float left_k_s, float right_k_v, float right_k_s );
+  void setPositionFeedForwardGains( float left_k_v, float left_k_s, float right_k_v,
+                                    float right_k_s, float ramp_width );
 
-  void setRotationalFeedForwardGains( float left_k_s, float right_k_s );
+  void setRotationalFeedForwardGains( float left_k_s, float right_k_s, float ramp_width );
 
   void setDisableAccelerationLimiting( bool disable ) { disable_acceleration_limiting_ = disable; }
 
@@ -92,4 +94,5 @@ private:
   bool initialized_position_ = false;
   float rotational_feed_forward_k_s_left_ = 0.0f;
   float rotational_feed_forward_k_s_right_ = 0.0f;
+  float rotational_feed_forward_ramp_width_ = 0.2f;
 };

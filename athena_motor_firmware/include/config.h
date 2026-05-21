@@ -7,7 +7,7 @@
 //
 // Control hierarchy:
 //   main.cpp (host comms + timer ISR)
-//     -> MotorController (velocity ramp, torque safety)
+//     -> MotorController (velocity ramp, torque safety, rotational feedforward)
 //       -> MotorSideController x2 (position/velocity PID + measurement fusion)
 //         -> PIDController (PID + feed-forward)
 //

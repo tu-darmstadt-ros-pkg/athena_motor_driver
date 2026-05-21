@@ -48,14 +48,10 @@ void MotorSideController::updateStatus( const MotorCommStatus &status, uint8_t e
 }
 
 void MotorSideController::updateFrontStatus( const MotorCommStatus &status, uint8_t expected_motor_id )
-{
-  updateStatus( status, expected_motor_id, front_status_, front_valid_, front_age_ );
-}
+{ updateStatus( status, expected_motor_id, front_status_, front_valid_, front_age_ ); }
 
 void MotorSideController::updateRearStatus( const MotorCommStatus &status, uint8_t expected_motor_id )
-{
-  updateStatus( status, expected_motor_id, rear_status_, rear_valid_, rear_age_ );
-}
+{ updateStatus( status, expected_motor_id, rear_status_, rear_valid_, rear_age_ ); }
 
 void MotorSideController::addMeasurements()
 {
@@ -101,24 +97,16 @@ void MotorSideController::resetPIDControllers()
 }
 
 void MotorSideController::setPositionPIDGains( float kp, float ki, float kd )
-{
-  position_pid_.setGains( kp, ki, kd );
-}
+{ position_pid_.setGains( kp, ki, kd ); }
 
 void MotorSideController::setVelocityPIDGains( float kp, float ki, float kd )
-{
-  velocity_pid_.setGains( kp, ki, kd );
-}
+{ velocity_pid_.setGains( kp, ki, kd ); }
 
-void MotorSideController::setVelocityFeedForwardGains( float k_v, float k_s )
-{
-  velocity_pid_.setFeedForwardGains( k_v, k_s );
-}
+void MotorSideController::setVelocityFeedForwardGains( float k_v, float k_s, float ramp_width )
+{ velocity_pid_.setFeedForwardGains( k_v, k_s, ramp_width ); }
 
-void MotorSideController::setPositionFeedForwardGains( float k_v, float k_s )
-{
-  position_pid_.setFeedForwardGains( k_v, k_s );
-}
+void MotorSideController::setPositionFeedForwardGains( float k_v, float k_s, float ramp_width )
+{ position_pid_.setFeedForwardGains( k_v, k_s, ramp_width ); }
 
 float MotorSideController::validFrontFreq( long age_ms ) const
 {

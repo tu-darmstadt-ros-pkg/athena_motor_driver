@@ -89,6 +89,8 @@ struct ChangePIDGainsCommand {
   float right_velocity_feed_forward_k_s = 0.0f;
   float left_velocity_feed_forward_k_s_rotational = 0.0f;
   float right_velocity_feed_forward_k_s_rotational = 0.0f;
+  float velocity_feed_forward_ramp_width = 0.2f;
+  float rotational_feed_forward_ramp_width = 0.2f;
 
   ChangePIDGainsCommand() = default;
 
@@ -110,7 +112,8 @@ REFL_AUTO( type( ChangePIDGainsCommand, crosstalk::id( 3 ) ), field( left_veloci
            field( left_velocity_feed_forward_k_s ), field( right_velocity_feed_forward_k_v ),
            field( right_velocity_feed_forward_k_s ),
            field( left_velocity_feed_forward_k_s_rotational ),
-           field( right_velocity_feed_forward_k_s_rotational ) )
+           field( right_velocity_feed_forward_k_s_rotational ),
+           field( velocity_feed_forward_ramp_width ), field( rotational_feed_forward_ramp_width ) )
 
 struct MotorStatus {
   enum class Error : uint8_t {
@@ -168,11 +171,13 @@ struct PIDDebugData {
   float derivative = std::numeric_limits<float>::quiet_NaN();
   float integral = std::numeric_limits<float>::quiet_NaN();
   float raw_output = std::numeric_limits<float>::quiet_NaN();
+  float feed_forward = std::numeric_limits<float>::quiet_NaN();
   float output = std::numeric_limits<float>::quiet_NaN();
 };
 
 REFL_AUTO( type( PIDDebugData ), field( goal ), field( current ), field( dt ), field( error ),
-           field( derivative ), field( integral ), field( raw_output ), field( output ) )
+           field( derivative ), field( integral ), field( raw_output ), field( feed_forward ),
+           field( output ) )
 
 struct MotorStatusDebugData {
   float freq_front_left = 0;

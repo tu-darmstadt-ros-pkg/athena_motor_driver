@@ -33,23 +33,25 @@ void MotorController::setVelocityPIDGains( const PIDGains &left_pid_gains,
 }
 
 void MotorController::setVelocityFeedForwardGains( float left_k_v, float left_k_s, float right_k_v,
-                                                   float right_k_s )
+                                                   float right_k_s, float ramp_width )
 {
-  left_.setVelocityFeedForwardGains( left_k_v, left_k_s );
-  right_.setVelocityFeedForwardGains( right_k_v, right_k_s );
+  left_.setVelocityFeedForwardGains( left_k_v, left_k_s, ramp_width );
+  right_.setVelocityFeedForwardGains( right_k_v, right_k_s, ramp_width );
 }
 
 void MotorController::setPositionFeedForwardGains( float left_k_v, float left_k_s, float right_k_v,
-                                                   float right_k_s )
+                                                   float right_k_s, float ramp_width )
 {
-  left_.setPositionFeedForwardGains( left_k_v, left_k_s );
-  right_.setPositionFeedForwardGains( right_k_v, right_k_s );
+  left_.setPositionFeedForwardGains( left_k_v, left_k_s, ramp_width );
+  right_.setPositionFeedForwardGains( right_k_v, right_k_s, ramp_width );
 }
 
-void MotorController::setRotationalFeedForwardGains( float left_k_s, float right_k_s )
+void MotorController::setRotationalFeedForwardGains( float left_k_s, float right_k_s,
+                                                     float ramp_width )
 {
   rotational_feed_forward_k_s_left_ = left_k_s;
   rotational_feed_forward_k_s_right_ = right_k_s;
+  rotational_feed_forward_ramp_width_ = ramp_width;
 }
 
 void MotorController::stop()
@@ -105,19 +107,20 @@ MotorController::Torque MotorController::computeTorque()
   }
   target_velocity_.left = command_.left;
   target_velocity_.right = -command_.right;
+
   // Limit acceleration
-  // Really simple ramp up and faster ramp down for breaking
-  float acceleration = MAX_DECELERATION;
-  if ( isAccelerating( target_velocity_.left, velocity_.left ) ||
-       isAccelerating( target_velocity_.right, velocity_.right ) ) {
-    acceleration = MAX_ACCELERATION;
-  }
+  float left_acceleration =
+      isAccelerating( target_velocity_.left, velocity_.left ) ? MAX_ACCELERATION : MAX_DECELERATION;
+  float right_acceleration = isAccelerating( target_velocity_.right, velocity_.right )
+                                 ? MAX_ACCELERATION
+                                 : MAX_DECELERATION;
+  float max_velocity_change_left = left_acceleration * elapsed_micros / 1E6f;
+  float max_velocity_change_right = right_acceleration * elapsed_micros / 1E6f;
 
-  const float max_velocity_change = acceleration * elapsed_micros / 1E6f;
-
-  velocity_.left = limitVelocityChange( target_velocity_.left, velocity_.left, max_velocity_change );
+  velocity_.left =
+      limitVelocityChange( target_velocity_.left, velocity_.left, max_velocity_change_left );
   velocity_.right =
-      limitVelocityChange( target_velocity_.right, velocity_.right, max_velocity_change );
+      limitVelocityChange( target_velocity_.right, velocity_.right, max_velocity_change_right );
 
   if ( disable_acceleration_limiting_ ) {
     // If acceleration limits are disabled, we just set the target velocity directly
@@ -144,15 +147,19 @@ MotorController::Torque MotorController::computeTorque()
                              std::abs( velocity_.left ) < VELOCITY_DEAD_ZONE );
 
   if ( is_rotating ) {
-    if ( std::abs( velocity_.left ) > VELOCITY_DEAD_ZONE )
-      left_torque += std::copysign( rotational_feed_forward_k_s_left_, velocity_.left );
-    if ( std::abs( velocity_.right ) > VELOCITY_DEAD_ZONE )
-      right_torque += std::copysign( rotational_feed_forward_k_s_right_, velocity_.right );
+    // Apply friction feedforward with a linear ramp during rotation
+    if ( std::abs( velocity_.left ) > VELOCITY_DEAD_ZONE ) {
+      float ramp_factor =
+          std::min( 1.0f, std::abs( velocity_.left ) / rotational_feed_forward_ramp_width_ );
+      left_torque += std::copysign( rotational_feed_forward_k_s_left_ * ramp_factor, velocity_.left );
+    }
+    if ( std::abs( velocity_.right ) > VELOCITY_DEAD_ZONE ) {
+      float ramp_factor =
+          std::min( 1.0f, std::abs( velocity_.right ) / rotational_feed_forward_ramp_width_ );
+      right_torque += std::copysign( rotational_feed_forward_k_s_right_ * ramp_factor, velocity_.right );
+    }
   }
 
-  const float max_torque_change = MAX_TORQUE_CHANGE * elapsed_micros / 1E6f;
-  left_torque = limitTorqueChange( left_torque, torque_.left, max_torque_change );
-  right_torque = limitTorqueChange( right_torque, torque_.right, max_torque_change );
   torque_.left = left_torque;
   torque_.right = right_torque;
 
