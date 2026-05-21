@@ -23,6 +23,9 @@ AthenaMotorDriver::AthenaMotorDriver( const rclcpp::NodeOptions &options )
   // Declare serial parameters
   declare_readonly_parameter( "port_name", port_name_, "Serial port name" );
   declare_readonly_parameter( "baud_rate", baud_rate_, "Serial baud rate" );
+  declare_reconfigurable_parameter( "angular_velocity_limit", std::ref( angular_velocity_limit_ ),
+                                    "Limit for commanded angular velocity (rad/s)",
+                                    hector::ParameterOptions<double>().setRange( 0.0, 2.0, 0.01 ) );
   declare_reconfigurable_parameter(
       "controller", std::ref( controller_type_ ), "Controller type",
       hector::ParameterOptions<std::string>()
@@ -139,8 +142,14 @@ void AthenaMotorDriver::update()
     } else if ( twist_msg_ ) {
       is_moving_ = true;
       const double direction_sign = invert_forward_direction_ ? -1.0 : 1.0;
-      MotorCommand command = controller_->computeMotorCommand( direction_sign * twist_msg_->linear.x,
-                                                               twist_msg_->angular.z );
+      double angular = twist_msg_->angular.z;
+      double linear = twist_msg_->linear.x;
+      if ( std::abs( angular ) > angular_velocity_limit_ ) {
+        RCLCPP_DEBUG( get_logger(), "Commanded angular velocity exceeds limit." );
+        angular = std::copysign( angular_velocity_limit_, angular );
+        linear *= angular / twist_msg_->angular.z; // Scale linear velocity to maintain curvature
+      }
+      MotorCommand command = controller_->computeMotorCommand( direction_sign * linear, angular );
       RCLCPP_DEBUG( get_logger(), "Sending velocities: %f, %f", command.left, command.right );
       result = cross_talker_->sendObject( command );
     }
@@ -326,6 +335,9 @@ void AthenaMotorDriver::updateSettings()
   UpdateSettings settings;
   settings.enable_debug = debug_;
   settings.disable_acceleration_limiting = disable_acceleration_limiting_;
+  settings.max_track_acceleration_rad_s2 = static_cast<float>( max_track_acceleration_rad_s2_ );
+  settings.max_track_deceleration_rad_s2 = static_cast<float>( max_track_deceleration_rad_s2_ );
+  settings.max_track_jerk_rad_s3 = static_cast<float>( max_track_jerk_rad_s3_ );
   cross_talker_->sendObject( settings );
 }
 
@@ -354,6 +366,24 @@ void AthenaMotorDriver::declareMicroControllerParameters()
       hector::ParameterOptions<bool>().onUpdate( [this]( const auto &value ) {
         RCLCPP_INFO( get_logger(), "Setting acceleration limiting to: %s",
                      value ? "disabled" : "enabled" );
+        updateSettings();
+      } ) );
+  declare_reconfigurable_parameter(
+      "max_track_acceleration_rad_s2", std::ref( max_track_acceleration_rad_s2_ ),
+      "Firmware VELOCITY ramp: max track drive acceleration reference (rad/s²)",
+      hector::ParameterOptions<double>().setRange( 0.1, 200.0, 0.1 ).onUpdate( [this]( const auto & ) {
+        updateSettings();
+      } ) );
+  declare_reconfigurable_parameter(
+      "max_track_deceleration_rad_s2", std::ref( max_track_deceleration_rad_s2_ ),
+      "Firmware VELOCITY ramp: max track drive deceleration reference magnitude (rad/s²)",
+      hector::ParameterOptions<double>().setRange( 0.1, 200.0, 0.1 ).onUpdate( [this]( const auto & ) {
+        updateSettings();
+      } ) );
+  declare_reconfigurable_parameter(
+      "max_track_jerk_rad_s3",
+      std::ref( max_track_jerk_rad_s3_ ), "Firmware VELOCITY ramp: max track drive jerk magnitude on velocity reference (rad/s³); 0 disables",
+      hector::ParameterOptions<double>().setRange( 0.0, 5000.0, 1.0 ).onUpdate( [this]( const auto & ) {
         updateSettings();
       } ) );
   declare_reconfigurable_parameter(

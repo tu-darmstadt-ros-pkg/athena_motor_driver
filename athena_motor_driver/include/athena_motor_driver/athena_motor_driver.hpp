@@ -63,6 +63,7 @@ private:
   std::string port_name_ = "/dev/tty_drive_motor_controller";
   int baud_rate_ = 115200;
   double wheel_radius_ = 0.07;
+  double angular_velocity_limit_ = 0.06;
   PIDGains left_velocity_pid_gains_;
   PIDGains right_velocity_pid_gains_;
   PIDGains left_position_pid_gains_;
@@ -79,6 +80,9 @@ private:
   bool pid_updated_ = false;
   bool debug_ = false;
   bool disable_acceleration_limiting_ = false;
+  double max_track_acceleration_rad_s2_ = 6.0;
+  double max_track_deceleration_rad_s2_ = 16.0;
+  double max_track_jerk_rad_s3_ = 120.0;
   bool torque_mode_ = false;
   bool is_moving_ = false;
   bool invert_forward_direction_ = false;
