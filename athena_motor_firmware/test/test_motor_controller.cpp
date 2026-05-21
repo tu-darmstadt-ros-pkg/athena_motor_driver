@@ -340,6 +340,95 @@ TEST_F( MotorControllerTest, SlowStairClimbing )
   EXPECT_GT( sim.robot_velocity, 0.1f ); // Making progress
 }
 
+TEST_F( MotorControllerTest, FeedForward_VelocityOnly )
+{
+  PIDGains zero_gains{ 0.0f, 0.0f, 0.0f };
+  controller.setVelocityPIDGains( zero_gains, zero_gains );
+  controller.setVelocityFeedForwardGains( 0.3f, 0.0f, 0.3f, 0.0f, 0.0f );
+  controller.setRotationalFeedForwardGains( 0.0f, 0.0f, 0.0f );
+  controller.setDisableAccelerationLimiting( true );
+
+  step( 10 ); 
+
+  MotorCommand cmd;
+  cmd.mode = MotorCommand::MotorMode::VELOCITY;
+  cmd.left = 5.0f;
+  cmd.right = 5.0f;
+  controller.setCommand( cmd );
+  
+  // Advance enough time for the constraint ramp (0.3Nm/per step) to reach target
+  step( 30 ); 
+
+  // expected_torque = 5.0 rad/s * 0.3 kv = 1.5
+  EXPECT_NEAR( sim.fl.applied_torque, 1.5f, 0.01f );
+  EXPECT_NEAR( sim.fr.applied_torque, -1.5f, 0.01f );
+}
+
+TEST_F( MotorControllerTest, FeedForward_StaticFrictionRamp )
+{
+  PIDGains zero_gains{ 0.0f, 0.0f, 0.0f };
+  controller.setVelocityPIDGains( zero_gains, zero_gains );
+  // pure stiction KS=1.0, ramp=2.0
+  controller.setVelocityFeedForwardGains( 0.0f, 1.0f, 0.0f, 1.0f, 2.0f );
+  controller.setRotationalFeedForwardGains( 0.0f, 0.0f, 0.0f );
+  controller.setDisableAccelerationLimiting( true );
+
+  step( 10 ); 
+
+  MotorCommand cmd;
+  cmd.mode = MotorCommand::MotorMode::VELOCITY;
+  
+  // Inside the 2.0 ramp => ks * (1.2/2.0) = ks * 0.6 = 0.6
+  cmd.left = 1.2f;
+  cmd.right = 1.2f;
+  controller.setCommand( cmd );
+  step( 30 ); 
+
+  EXPECT_NEAR( sim.fl.applied_torque, 0.6f, 0.01f );
+  EXPECT_NEAR( sim.fr.applied_torque, -0.6f, 0.01f );
+
+  // Outside the ramp => full ks
+  cmd.left = 3.0f;
+  cmd.right = 3.0f;
+  controller.setCommand( cmd );
+  step( 30 ); 
+
+  EXPECT_NEAR( sim.fl.applied_torque, 1.0f, 0.01f );
+  EXPECT_NEAR( sim.fr.applied_torque, -1.0f, 0.01f );
+}
+
+TEST_F( MotorControllerTest, FeedForward_RotationalBehavior )
+{
+  PIDGains zero_gains{ 0.0f, 0.0f, 0.0f };
+  controller.setVelocityPIDGains( zero_gains, zero_gains );
+  controller.setVelocityFeedForwardGains( 0.0f, 0.0f, 0.0f, 0.0f, 0.0f );
+  // Rotational stiction Ks=2.0, ramp width=1.0
+  controller.setRotationalFeedForwardGains( 2.0f, 2.0f, 1.0f );
+  controller.setDisableAccelerationLimiting( true );
+
+  step( 10 );
+
+  MotorCommand cmd;
+  cmd.mode = MotorCommand::MotorMode::VELOCITY;
+
+  cmd.left = 5.0f;
+  cmd.right = 5.0f;
+  controller.setCommand( cmd );
+  step( 30 ); 
+
+  // EXPECT rotational ks=2.0 applied
+  EXPECT_NEAR( sim.fl.applied_torque, 2.0f, 0.01f );
+  EXPECT_NEAR( sim.fr.applied_torque, -2.0f, 0.01f );
+
+  cmd.left = 5.0f;
+  cmd.right = -5.0f;
+  controller.setCommand( cmd );
+  step( 30 ); 
+
+  EXPECT_NEAR( sim.fl.applied_torque, 0.0f, 0.01f );
+  EXPECT_NEAR( sim.fr.applied_torque, 0.0f, 0.01f );
+}
+
 int main( int argc, char **argv )
 {
   ::testing::InitGoogleTest( &argc, argv );
