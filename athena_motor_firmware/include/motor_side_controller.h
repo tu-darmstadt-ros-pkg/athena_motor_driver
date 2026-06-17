@@ -36,16 +36,16 @@ public:
   void initializePosition();
 
   /// Compute torque output for the given target velocity using position/velocity PID
-  float computeTorque( float target_velocity );
+  float computeTorque( float target_velocity, float dt );
 
   /// Reset all PID controllers (e.g., on communication loss)
   void resetPIDControllers();
 
   // --- Gain setters ---
-  void setPositionPIDGains( float kp, float ki, float kd );
-  void setVelocityPIDGains( float kp, float ki, float kd );
-  void setVelocityFeedForwardGains( float k_v, float k_s );
-  void setPositionFeedForwardGains( float k_v, float k_s );
+  void setPositionPIDGains( float kp, float ki, float kd, float kff = 0.0f );
+  void setVelocityPIDGains( float kp, float ki, float kd, float kff = 0.0f );
+  void setVelocityStartupParams( float gain, float offset = 0.0f );
+  void setDerivativeFilterCutoff( float cutoff_hz, float sample_hz );
 
   // --- Accessors ---
   float filteredVelocity() const { return velocity_filter_.getFiltered(); }

@@ -17,7 +17,7 @@
 // ============================================================
 // Timing
 // ============================================================
-static constexpr int MAIN_LOOP_PERIOD_US = 2000;   // 500 Hz control loop
+static constexpr int MAIN_LOOP_PERIOD_US = 1000;   // 1000 Hz control loop
 static constexpr int COMMAND_TIMEOUT_MS = 200;     // Stop motors if no host command
 static constexpr int MOTOR_STATUS_TIMEOUT_MS = 20; // Motor considered dead
 static constexpr int STARTUP_DELAY_MS = 20;
@@ -29,7 +29,7 @@ static constexpr int REBOOT_DELAY_MS = 10;
 static constexpr float MAX_PLAUSIBLE_TORQUE_COMMAND = 60.0f; // Nm
 static constexpr float MOTOR_TORQUE_LIMIT = 30.0f;           // Nm
 static constexpr float MAX_TORQUE_CHANGE = 150.0f;           // Nm/s
-static constexpr float MIN_TORQUE_FOR_FOC = 0.5f;            // Below this -> BRAKE mode
+static constexpr float MIN_TORQUE_FOR_FOC = 0.1f;            // Below this -> BRAKE mode
 
 // ============================================================
 // Velocity / acceleration limits
@@ -38,7 +38,7 @@ static constexpr float MAX_PLAUSIBLE_VELOCITY_COMMAND = 30.0f; // rad/s
 static constexpr float MAX_ACCELERATION = 6.0f;                // rad/s^2
 static constexpr float MAX_DECELERATION = 16.0f;               // rad/s^2
 static constexpr float VELOCITY_DEAD_ZONE = 0.1f;              // rad/s, below this -> position hold
-static constexpr float FEED_FORWARD_DEAD_ZONE = 0.1f;          // Goal threshold for feed-forward
+static constexpr float MOTION_THRESHOLD = 0.1f;                // Velocity threshold for considering the motor as moving
 
 // ============================================================
 // Communication recovery

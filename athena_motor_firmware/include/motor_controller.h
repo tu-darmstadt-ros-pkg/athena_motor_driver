@@ -26,13 +26,16 @@ public:
 
   void setVelocityPIDGains( const PIDGains &left_pid_gains, const PIDGains &right_pid_gains );
 
-  void setVelocityFeedForwardGains( float left_k_v, float left_k_s, float right_k_v, float right_k_s );
-
-  void setPositionFeedForwardGains( float left_k_v, float left_k_s, float right_k_v, float right_k_s );
-
-  void setRotationalFeedForwardGains( float left_k_s, float right_k_s );
+  void setVelocityStartupParams( float left_gain, float left_offset, float right_gain,
+                                     float right_offset );
 
   void setDisableAccelerationLimiting( bool disable ) { disable_acceleration_limiting_ = disable; }
+
+  void setVelocityRampLimits( float max_accel_rad_s2, float max_decel_rad_s2 );
+
+  void setVelocityReferenceJerkLimit( float max_jerk_rad_s3 );
+
+  void setDerivativeFilterCutoff( float cutoff_hz, float sample_hz );
 
   void stop();
 
@@ -56,14 +59,14 @@ private:
     Torque() = default;
   };
 
-  Torque computeTorque();
-  void computeMotorCommands( MotorCommCommand &left_command, MotorCommCommand &right_command );
-  void sendReceiveBus( std::shared_ptr<MotorComm> &comm, int &reset_skip_count,
-                       const MotorCommCommand &left_command, const MotorCommCommand &right_command,
-                       bool bus_working, bool is_front );
+  Torque computeTorque( float dt );
+  void updateVelocityReferenceWithLimits( float commanded_velocity_rad_s,
+                                          float &reference_velocity_rad_s,
+                                          float &reference_signed_accel_rad_s2, float dt );
+  void computeMotorCommands( float dt );
+  void sendReceiveBothBuses( bool front_working, bool rear_working );
   void tryInitializePosition();
-  void assembleMotorStatus( const MotorCommCommand &left_command,
-                            const MotorCommCommand &right_command );
+  void assembleMotorStatus();
   void collectDebugData();
 
   struct Velocity {
@@ -72,9 +75,11 @@ private:
   };
 
   MotorCommand command_;
-  Velocity target_velocity_;
+  MotorCommCommand left_command_;
+  MotorCommCommand right_command_;
+  Velocity target_velocity_; // VELOCITY command from host (per track side)
   Torque torque_;
-  Velocity velocity_;
+  Velocity velocity_; // accel/jerk limited reference for PID (not measured sprocket ω)
   elapsedMicros time_since_last_command_ = 0;
 
   RingBuffer<elapsedMillis, STATUS_AGE_BUFFER_SIZE> status_ages_;
@@ -89,7 +94,11 @@ private:
   int reset_skip_count_front_ = 0; // If motor comm fails try to skip communication for a few times
   int reset_skip_count_rear_ = 0;
   bool disable_acceleration_limiting_ = false; // For tuning PID controller
+  float max_acceleration_rad_s2_ = MAX_ACCELERATION;
+  float max_deceleration_rad_s2_ = MAX_DECELERATION;
+  float max_track_jerk_rad_s3_ =
+      0.f; // limit on |da/dt| for the velocity reference (rad/s³); 0 = snap each tick
+  float velocity_reference_accel_left_rad_s2_ = 0.f;
+  float velocity_reference_accel_right_rad_s2_ = 0.f;
   bool initialized_position_ = false;
-  float rotational_feed_forward_k_s_left_ = 0.0f;
-  float rotational_feed_forward_k_s_right_ = 0.0f;
 };

@@ -21,35 +21,46 @@ void MotorController::setCommand( const MotorCommand &command ) { command_ = com
 void MotorController::setPositionPIDGains( const PIDGains &left_pid_gains,
                                            const PIDGains &right_pid_gains )
 {
-  left_.setPositionPIDGains( left_pid_gains.k_p, left_pid_gains.k_i, left_pid_gains.k_d );
-  right_.setPositionPIDGains( right_pid_gains.k_p, right_pid_gains.k_i, right_pid_gains.k_d );
+  left_.setPositionPIDGains( left_pid_gains.k_p, left_pid_gains.k_i, left_pid_gains.k_d,
+                             left_pid_gains.k_ff );
+  right_.setPositionPIDGains( right_pid_gains.k_p, right_pid_gains.k_i, right_pid_gains.k_d,
+                              right_pid_gains.k_ff );
 }
 
 void MotorController::setVelocityPIDGains( const PIDGains &left_pid_gains,
                                            const PIDGains &right_pid_gains )
 {
-  left_.setVelocityPIDGains( left_pid_gains.k_p, left_pid_gains.k_i, left_pid_gains.k_d );
-  right_.setVelocityPIDGains( right_pid_gains.k_p, right_pid_gains.k_i, right_pid_gains.k_d );
+  left_.setVelocityPIDGains( left_pid_gains.k_p, left_pid_gains.k_i, left_pid_gains.k_d,
+                             left_pid_gains.k_ff );
+  right_.setVelocityPIDGains( right_pid_gains.k_p, right_pid_gains.k_i, right_pid_gains.k_d,
+                              right_pid_gains.k_ff );
 }
 
-void MotorController::setVelocityFeedForwardGains( float left_k_v, float left_k_s, float right_k_v,
-                                                   float right_k_s )
+void MotorController::setVelocityStartupParams( float left_gain, float left_offset,
+                                                float right_gain, float right_offset )
 {
-  left_.setVelocityFeedForwardGains( left_k_v, left_k_s );
-  right_.setVelocityFeedForwardGains( right_k_v, right_k_s );
+  left_.setVelocityStartupParams( left_gain, left_offset );
+  right_.setVelocityStartupParams( right_gain, right_offset );
 }
 
-void MotorController::setPositionFeedForwardGains( float left_k_v, float left_k_s, float right_k_v,
-                                                   float right_k_s )
+void MotorController::setVelocityRampLimits( float max_accel_rad_s2, float max_decel_rad_s2 )
 {
-  left_.setPositionFeedForwardGains( left_k_v, left_k_s );
-  right_.setPositionFeedForwardGains( right_k_v, right_k_s );
+  constexpr float k_min = 0.1f;
+  constexpr float k_max = 200.0f;
+  max_acceleration_rad_s2_ = std::clamp( max_accel_rad_s2, k_min, k_max );
+  max_deceleration_rad_s2_ = std::clamp( max_decel_rad_s2, k_min, k_max );
 }
 
-void MotorController::setRotationalFeedForwardGains( float left_k_s, float right_k_s )
+void MotorController::setVelocityReferenceJerkLimit( float max_jerk_rad_s3 )
 {
-  rotational_feed_forward_k_s_left_ = left_k_s;
-  rotational_feed_forward_k_s_right_ = right_k_s;
+  constexpr float k_max_jerk = 1.0e6f;
+  max_track_jerk_rad_s3_ = std::clamp( max_jerk_rad_s3, 0.f, k_max_jerk );
+}
+
+void MotorController::setDerivativeFilterCutoff( float cutoff_hz, float sample_hz )
+{
+  left_.setDerivativeFilterCutoff( cutoff_hz, sample_hz );
+  right_.setDerivativeFilterCutoff( cutoff_hz, sample_hz );
 }
 
 void MotorController::stop()
@@ -59,6 +70,8 @@ void MotorController::stop()
   command_.right = 0;
   target_velocity_.left = 0;
   target_velocity_.right = 0;
+  velocity_reference_accel_left_rad_s2_ = 0.f;
+  velocity_reference_accel_right_rad_s2_ = 0.f;
 }
 
 namespace
@@ -84,17 +97,51 @@ float limitTorqueChange( float target_torque, float current_torque, float max_to
   }
   return current_torque + std::copysign( max_torque_change, target_torque - current_torque );
 }
+
+float slewScalarToward( float current, float goal, float max_step )
+{
+  if ( goal > current + max_step )
+    return current + max_step;
+  if ( goal < current - max_step )
+    return current - max_step;
+  return goal;
+}
 } // namespace
 
-MotorController::Torque MotorController::computeTorque()
+void MotorController::updateVelocityReferenceWithLimits( float commanded_velocity_rad_s,
+                                                         float &reference_velocity_rad_s,
+                                                         float &reference_signed_accel_rad_s2,
+                                                         float dt )
+{
+  const float error = commanded_velocity_rad_s - reference_velocity_rad_s;
+  float accel_mag = max_deceleration_rad_s2_;
+  if ( isAccelerating( commanded_velocity_rad_s, reference_velocity_rad_s ) ) {
+    accel_mag = max_acceleration_rad_s2_;
+  }
+  constexpr float k_err_eps = 1e-5f;
+  const float desired_signed_accel =
+      ( std::fabs( error ) < k_err_eps ) ? 0.f : std::copysign( accel_mag, error );
+
+  if ( max_track_jerk_rad_s3_ <= 0.f ) {
+    reference_signed_accel_rad_s2 = desired_signed_accel;
+  } else {
+    const float max_da = max_track_jerk_rad_s3_ * dt;
+    reference_signed_accel_rad_s2 =
+        slewScalarToward( reference_signed_accel_rad_s2, desired_signed_accel, max_da );
+  }
+
+  const float max_dv = std::fabs( reference_signed_accel_rad_s2 ) * dt;
+  reference_velocity_rad_s =
+      limitVelocityChange( commanded_velocity_rad_s, reference_velocity_rad_s, max_dv );
+}
+
+MotorController::Torque MotorController::computeTorque( float dt )
 {
   if ( !initialized_position_ ) {
     return { 0, 0 }; // Do not issue any torque commands until position is initialized
   }
-  // Cap elapsed time to 30 ms to avoid large jumps after long delays
-  long elapsed_micros = std::min<long>( time_since_last_command_, 30'000 );
   if ( command_.mode == MotorCommand::MotorMode::TORQUE ) {
-    float max_torque_change = MAX_TORQUE_CHANGE * elapsed_micros / 1E6f;
+    float max_torque_change = MAX_TORQUE_CHANGE * dt;
     float torque_left = limitTorqueChange( command_.left, torque_.left, max_torque_change );
     float torque_right = limitTorqueChange( -command_.right, torque_.right, max_torque_change );
     torque_.left = torque_left;
@@ -105,29 +152,23 @@ MotorController::Torque MotorController::computeTorque()
   }
   target_velocity_.left = command_.left;
   target_velocity_.right = -command_.right;
-  // Limit acceleration
-  // Really simple ramp up and faster ramp down for breaking
-  float acceleration = MAX_DECELERATION;
-  if ( isAccelerating( target_velocity_.left, velocity_.left ) ||
-       isAccelerating( target_velocity_.right, velocity_.right ) ) {
-    acceleration = MAX_ACCELERATION;
-  }
 
-  const float max_velocity_change = acceleration * elapsed_micros / 1E6f;
-
-  velocity_.left = limitVelocityChange( target_velocity_.left, velocity_.left, max_velocity_change );
-  velocity_.right =
-      limitVelocityChange( target_velocity_.right, velocity_.right, max_velocity_change );
+  updateVelocityReferenceWithLimits( target_velocity_.left, velocity_.left,
+                                     velocity_reference_accel_left_rad_s2_, dt );
+  updateVelocityReferenceWithLimits( target_velocity_.right, velocity_.right,
+                                     velocity_reference_accel_right_rad_s2_, dt );
 
   if ( disable_acceleration_limiting_ ) {
     // If acceleration limits are disabled, we just set the target velocity directly
     // This is useful for tuning the PID controller but should not be used in normal operation
     velocity_.left = target_velocity_.left;
     velocity_.right = target_velocity_.right;
+    velocity_reference_accel_left_rad_s2_ = 0.f;
+    velocity_reference_accel_right_rad_s2_ = 0.f;
   }
 
-  float left_torque = left_.computeTorque( velocity_.left );
-  float right_torque = right_.computeTorque( velocity_.right );
+  float left_torque = left_.computeTorque( velocity_.left, dt );
+  float right_torque = right_.computeTorque( velocity_.right, dt );
 
   if ( !std::isfinite( left_torque ) || !std::isfinite( right_torque ) ) {
     static ThrottlePrinter printer( 1000 );
@@ -136,23 +177,6 @@ MotorController::Torque MotorController::computeTorque()
     right_torque = 0;
   }
 
-  // Detect rotation: wheels moving in opposite directions (or one moving, one still)
-  const bool is_rotating = ( velocity_.left * velocity_.right < 0 ) ||
-                           ( std::abs( velocity_.left ) > VELOCITY_DEAD_ZONE &&
-                             std::abs( velocity_.right ) < VELOCITY_DEAD_ZONE ) ||
-                           ( std::abs( velocity_.right ) > VELOCITY_DEAD_ZONE &&
-                             std::abs( velocity_.left ) < VELOCITY_DEAD_ZONE );
-
-  if ( is_rotating ) {
-    if ( std::abs( velocity_.left ) > VELOCITY_DEAD_ZONE )
-      left_torque += std::copysign( rotational_feed_forward_k_s_left_, velocity_.left );
-    if ( std::abs( velocity_.right ) > VELOCITY_DEAD_ZONE )
-      right_torque += std::copysign( rotational_feed_forward_k_s_right_, velocity_.right );
-  }
-
-  const float max_torque_change = MAX_TORQUE_CHANGE * elapsed_micros / 1E6f;
-  left_torque = limitTorqueChange( left_torque, torque_.left, max_torque_change );
-  right_torque = limitTorqueChange( right_torque, torque_.right, max_torque_change );
   torque_.left = left_torque;
   torque_.right = right_torque;
 
@@ -170,55 +194,81 @@ static void setCommandFromTorque( MotorCommCommand &command, float torque )
   }
 }
 
-void MotorController::computeMotorCommands( MotorCommCommand &left_command,
-                                            MotorCommCommand &right_command )
+void MotorController::computeMotorCommands( float dt )
 {
-  left_command.motor_id = 0;
-  right_command.motor_id = 1;
+  left_command_.motor_id = 0;
+  right_command_.motor_id = 1;
   const bool left_working = left_.isWorking( MOTOR_STATUS_TIMEOUT_MS );
   const bool right_working = right_.isWorking( MOTOR_STATUS_TIMEOUT_MS );
   if ( !left_working || !right_working ) {
     // At least one motor on each side needs to be working, otherwise we stop
     velocity_.left = 0;
     velocity_.right = 0;
-    left_command.mode = MotorMode::BRAKE;
-    right_command.mode = MotorMode::BRAKE;
+    velocity_reference_accel_left_rad_s2_ = 0.f;
+    velocity_reference_accel_right_rad_s2_ = 0.f;
+    left_command_.mode = MotorMode::BRAKE;
+    right_command_.mode = MotorMode::BRAKE;
     // Reset all PID controllers so it will not try to jump back to a position when power is restored
     left_.resetPIDControllers();
     right_.resetPIDControllers();
     initialized_position_ = false;
     debug_data_.error = MotorDebugData::Error::NO_MOTOR_STATUS;
   } else {
-    Torque torque = computeTorque();
-    setCommandFromTorque( left_command, initialized_position_ ? torque.left : 0 );
-    setCommandFromTorque( right_command, initialized_position_ ? torque.right : 0 );
+    Torque torque = computeTorque( dt );
+    setCommandFromTorque( left_command_, initialized_position_ ? torque.left : 0 );
+    setCommandFromTorque( right_command_, initialized_position_ ? torque.right : 0 );
   }
-  time_since_last_command_ = 0;
 }
 
-void MotorController::sendReceiveBus( std::shared_ptr<MotorComm> &comm, int &reset_skip_count,
-                                      const MotorCommCommand &left_command,
-                                      const MotorCommCommand &right_command, bool bus_working,
-                                      bool is_front )
+void MotorController::sendReceiveBothBuses( bool front_working, bool rear_working )
 {
-  MotorCommStatus left_status;
-  MotorCommStatus right_status;
-  if ( bus_working || ++reset_skip_count > MAX_RESET_SKIP_COUNT ) {
-    // When communication fails, skip commands for a few cycles so if motor comm is
-    // misaligned it has time to recover
-    reset_skip_count = 0;
-    comm->sendReceive( left_command, right_command, left_status, right_status );
-  } else {
-    comm->resetComm();
-  }
+  bool front_active = front_working || ++reset_skip_count_front_ > MAX_RESET_SKIP_COUNT;
+  bool rear_active = rear_working || ++reset_skip_count_rear_ > MAX_RESET_SKIP_COUNT;
 
-  if ( is_front ) {
-    left_.updateFrontStatus( left_status, 0 );
-    right_.updateFrontStatus( right_status, 1 );
-  } else {
-    left_.updateRearStatus( left_status, 0 );
-    right_.updateRearStatus( right_status, 1 );
-  }
+  if ( front_active )
+    reset_skip_count_front_ = 0;
+  else
+    front_motor_comm_->resetComm();
+
+  if ( rear_active )
+    reset_skip_count_rear_ = 0;
+  else
+    rear_motor_comm_->resetComm();
+
+  MotorCommStatus front_left_status, front_right_status;
+  MotorCommStatus rear_left_status, rear_right_status;
+
+  // Interleaved communication: overlap motor processing time across buses.
+  // Both buses use independent serial lines, so TX/RX can overlap.
+
+  // Phase 1: Send left motor command on both buses
+  if ( front_active )
+    front_motor_comm_->sendCommand( left_command_ );
+  if ( rear_active )
+    rear_motor_comm_->sendCommand( left_command_ );
+
+  // Phase 2: Read left motor responses (motor was processing during the other bus's TX)
+  if ( front_active )
+    front_left_status = front_motor_comm_->receiveStatus();
+  if ( rear_active )
+    rear_left_status = rear_motor_comm_->receiveStatus();
+
+  // Phase 3: Send right motor command on both buses
+  if ( front_active )
+    front_motor_comm_->sendCommand( right_command_ );
+  if ( rear_active )
+    rear_motor_comm_->sendCommand( right_command_ );
+
+  // Phase 4: Read right motor responses
+  if ( front_active )
+    front_right_status = front_motor_comm_->receiveStatus();
+  if ( rear_active )
+    rear_right_status = rear_motor_comm_->receiveStatus();
+
+  left_.updateFrontStatus( front_left_status, 0 );
+  right_.updateFrontStatus( front_right_status, 1 );
+  left_.updateRearStatus( rear_left_status, 0 );
+  right_.updateRearStatus( rear_right_status, 1 );
 }
 
 void MotorController::tryInitializePosition()
@@ -238,8 +288,7 @@ void MotorController::tryInitializePosition()
   }
 }
 
-void MotorController::assembleMotorStatus( const MotorCommCommand &left_command,
-                                           const MotorCommCommand &right_command )
+void MotorController::assembleMotorStatus()
 {
   motor_status_.front_left = left_.frontStatus();
   motor_status_.front_right = right_.frontStatus();
@@ -248,13 +297,13 @@ void MotorController::assembleMotorStatus( const MotorCommCommand &left_command,
   motor_status_.velocity_left = left_.filteredVelocity();
   motor_status_.velocity_right = right_.filteredVelocity();
 
-  const float left_target_torque = left_command.mode == MotorMode::FOC ? left_command.torque : 0;
+  const float left_target_torque = left_command_.mode == MotorMode::FOC ? left_command_.torque : 0;
   motor_status_.front_left.target_torque = left_target_torque;
   motor_status_.rear_left.target_torque = left_target_torque;
   motor_status_.front_left.target_velocity = velocity_.left;
   motor_status_.rear_left.target_velocity = velocity_.left;
 
-  const float right_target_torque = right_command.mode == MotorMode::FOC ? right_command.torque : 0;
+  const float right_target_torque = right_command_.mode == MotorMode::FOC ? right_command_.torque : 0;
   motor_status_.front_right.target_torque = right_target_torque;
   motor_status_.rear_right.target_torque = right_target_torque;
   motor_status_.front_right.target_velocity = velocity_.right;
@@ -284,25 +333,23 @@ const FullMotorStatus &MotorController::update()
 {
   debug_data_.error = MotorDebugData::Error::NO_ERROR;
 
-  MotorCommCommand left_command;
-  MotorCommCommand right_command;
-  computeMotorCommands( left_command, right_command );
+  // Cap dt to 20 ms to prevent observer divergence after loop pauses (e.g. E-stop)
+  const float dt = std::min<float>( float( time_since_last_command_ ) / 1E6f, 0.020f );
+  time_since_last_command_ = 0;
+  computeMotorCommands( dt );
 
   const bool front_working =
       left_.frontAgeMs() < MOTOR_STATUS_TIMEOUT_MS || right_.frontAgeMs() < MOTOR_STATUS_TIMEOUT_MS;
   const bool rear_working =
       left_.rearAgeMs() < MOTOR_STATUS_TIMEOUT_MS || right_.rearAgeMs() < MOTOR_STATUS_TIMEOUT_MS;
 
-  sendReceiveBus( front_motor_comm_, reset_skip_count_front_, left_command, right_command,
-                  front_working, true );
-  sendReceiveBus( rear_motor_comm_, reset_skip_count_rear_, left_command, right_command,
-                  rear_working, false );
+  sendReceiveBothBuses( front_working, rear_working );
 
   tryInitializePosition();
   left_.addMeasurements();
   right_.addMeasurements();
 
-  assembleMotorStatus( left_command, right_command );
+  assembleMotorStatus();
   collectDebugData();
 
   return motor_status_;

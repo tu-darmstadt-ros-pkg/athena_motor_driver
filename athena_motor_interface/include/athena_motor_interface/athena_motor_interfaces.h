@@ -67,35 +67,34 @@ struct PIDGains {
   float k_p = 0.f;
   float k_i = 0.f;
   float k_d = 0.f;
+  float k_ff = 0.f;
 
   PIDGains() = default;
 
-  PIDGains( float k_p, float k_i, float k_d ) : k_p( k_p ), k_i( k_i ), k_d( k_d ) { }
+  PIDGains( float k_p, float k_i, float k_d, float k_ff = 0.f )
+      : k_p( k_p ), k_i( k_i ), k_d( k_d ), k_ff( k_ff )
+  {
+  }
 };
 
-REFL_AUTO( type( PIDGains ), field( k_p ), field( k_i ), field( k_d ) )
+REFL_AUTO( type( PIDGains ), field( k_p ), field( k_i ), field( k_d ), field( k_ff ) )
 
-struct ChangePIDGainsCommand {
+struct UpdatePIDParamsCommand {
   PIDGains left_velocity_pid_gains;
   PIDGains right_velocity_pid_gains;
   PIDGains left_position_pid_gains;
   PIDGains right_position_pid_gains;
-  // Feed-forward control parameters for velocity control
-  // k_v: Velocity gain - proportional to target velocity
-  // k_s: Static friction gain - constant "push" to overcome static friction
-  float left_velocity_feed_forward_k_v = 0.0f;
-  float left_velocity_feed_forward_k_s = 0.0f;
-  float right_velocity_feed_forward_k_v = 0.0f;
-  float right_velocity_feed_forward_k_s = 0.0f;
-  float left_velocity_feed_forward_k_s_rotational = 0.0f;
-  float right_velocity_feed_forward_k_s_rotational = 0.0f;
+  float left_velocity_startup_gain = 0.0f;
+  float left_velocity_startup_offset = 0.0f;
+  float right_velocity_startup_gain = 0.0f;
+  float right_velocity_startup_offset = 0.0f;
 
-  ChangePIDGainsCommand() = default;
+  UpdatePIDParamsCommand() = default;
 
-  ChangePIDGainsCommand( const PIDGains &left_velocity_pid_gains,
-                         const PIDGains &right_velocity_pid_gains,
-                         const PIDGains &left_position_pid_gains,
-                         const PIDGains &right_position_pid_gains )
+  UpdatePIDParamsCommand( const PIDGains &left_velocity_pid_gains,
+                          const PIDGains &right_velocity_pid_gains,
+                          const PIDGains &left_position_pid_gains,
+                          const PIDGains &right_position_pid_gains )
       : left_velocity_pid_gains( left_velocity_pid_gains ),
         right_velocity_pid_gains( right_velocity_pid_gains ),
         left_position_pid_gains( left_position_pid_gains ),
@@ -104,13 +103,11 @@ struct ChangePIDGainsCommand {
   }
 };
 
-REFL_AUTO( type( ChangePIDGainsCommand, crosstalk::id( 3 ) ), field( left_velocity_pid_gains ),
+REFL_AUTO( type( UpdatePIDParamsCommand, crosstalk::id( 3 ) ), field( left_velocity_pid_gains ),
            field( right_velocity_pid_gains ), field( left_position_pid_gains ),
-           field( right_position_pid_gains ), field( left_velocity_feed_forward_k_v ),
-           field( left_velocity_feed_forward_k_s ), field( right_velocity_feed_forward_k_v ),
-           field( right_velocity_feed_forward_k_s ),
-           field( left_velocity_feed_forward_k_s_rotational ),
-           field( right_velocity_feed_forward_k_s_rotational ) )
+           field( right_position_pid_gains ), field( left_velocity_startup_gain ),
+           field( left_velocity_startup_offset ), field( right_velocity_startup_gain ),
+           field( right_velocity_startup_offset ) )
 
 struct MotorStatus {
   enum class Error : uint8_t {
@@ -155,10 +152,19 @@ REFL_AUTO( type( FullMotorStatus, crosstalk::id( 5 ) ), field( front_left ), fie
 struct UpdateSettings {
   bool enable_debug = false;
   bool disable_acceleration_limiting = false;
+  /// Firmware velocity ramp when commanding VELOCITY mode (sprocket / track drive, rad/s²).
+  float max_track_acceleration_rad_s2 = 6.0f;
+  float max_track_deceleration_rad_s2 = 16.0f;
+  /// Cap on |da/dt| for the commanded velocity reference (rad/s³). 0 = unlimited (trapezoidal ramp).
+  float max_track_jerk_rad_s3 = 0.0f;
+  /// Derivative low-pass filter cutoff frequency in Hz. 0 = no filtering.
+  float derivative_filter_cutoff_hz = 0.0f;
 };
 
 REFL_AUTO( type( UpdateSettings, crosstalk::id( 6 ) ), field( enable_debug ),
-           field( disable_acceleration_limiting ) )
+           field( disable_acceleration_limiting ), field( max_track_acceleration_rad_s2 ),
+           field( max_track_deceleration_rad_s2 ), field( max_track_jerk_rad_s3 ),
+           field( derivative_filter_cutoff_hz ) )
 
 struct PIDDebugData {
   float goal = std::numeric_limits<float>::quiet_NaN();

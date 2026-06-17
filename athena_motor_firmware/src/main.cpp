@@ -98,48 +98,47 @@ void loop()
             command.left, command.right );
         command.left = command.right = 0;
       }
+      noInterrupts();
       app.motor_controller.setCommand( command );
       app.time_since_last_command = 0;
       app.status_led.speed = StatusLED::FAST;
+      interrupts();
       app.host_comm.sendObject( AckCommand{ CommandType::MOTOR_COMMAND } );
       break;
     }
-    case crosstalk::object_id<ChangePIDGainsCommand>(): {
-      ChangePIDGainsCommand command;
+    case crosstalk::object_id<UpdatePIDParamsCommand>(): {
+      UpdatePIDParamsCommand command;
       if ( app.host_comm.readObject( command ) != crosstalk::ReadResult::Success ) {
         break;
       }
-      Serial.printf( "Received new velocity PID gains: left kP=%.3f, kI=%.3f, kD=%.3f; right "
-                     "kP=%.3f, kI=%.3f, kD=%.3f\n",
+      Serial.printf( "Received new velocity PID gains: left kP=%.3f, kI=%.3f, kD=%.3f, kFF=%.3f; "
+                     "right kP=%.3f, kI=%.3f, kD=%.3f, kFF=%.3f\n",
                      command.left_velocity_pid_gains.k_p, command.left_velocity_pid_gains.k_i,
-                     command.left_velocity_pid_gains.k_d, command.right_velocity_pid_gains.k_p,
-                     command.right_velocity_pid_gains.k_i, command.right_velocity_pid_gains.k_d );
-      Serial.printf( "Received new position PID gains: left kP=%.3f, kI=%.3f, kD=%.3f; right "
-                     "kP=%.3f, kI=%.3f, kD=%.3f\n",
+                     command.left_velocity_pid_gains.k_d, command.left_velocity_pid_gains.k_ff,
+                     command.right_velocity_pid_gains.k_p, command.right_velocity_pid_gains.k_i,
+                     command.right_velocity_pid_gains.k_d, command.right_velocity_pid_gains.k_ff );
+      Serial.printf( "Received new position PID gains: left kP=%.3f, kI=%.3f, kD=%.3f, kFF=%.3f; "
+                     "right kP=%.3f, kI=%.3f, kD=%.3f, kFF=%.3f\n",
                      command.left_position_pid_gains.k_p, command.left_position_pid_gains.k_i,
-                     command.left_position_pid_gains.k_d, command.right_position_pid_gains.k_p,
-                     command.right_position_pid_gains.k_i, command.right_position_pid_gains.k_d );
-      Serial.printf(
-          "Received new velocity feed-forward gains: left kV=%.3f, kS=%.3f, kS_rot=%.3f; right "
-          "kV=%.3f, kS=%.3f, kS_rot=%.3f\n",
-          command.left_velocity_feed_forward_k_v, command.left_velocity_feed_forward_k_s,
-          command.left_velocity_feed_forward_k_s_rotational,
-          command.right_velocity_feed_forward_k_v, command.right_velocity_feed_forward_k_s,
-          command.right_velocity_feed_forward_k_s_rotational );
+                     command.left_position_pid_gains.k_d, command.left_position_pid_gains.k_ff,
+                     command.right_position_pid_gains.k_p, command.right_position_pid_gains.k_i,
+                     command.right_position_pid_gains.k_d, command.right_position_pid_gains.k_ff );
+      Serial.printf( "Received new velocity startup parameters: left gain=%.3f, offset=%.3f; right "
+                     "gain=%.3f, offset=%.3f\n",
+                     command.left_velocity_startup_gain, command.left_velocity_startup_offset,
+                     command.right_velocity_startup_gain, command.right_velocity_startup_offset );
+      noInterrupts();
       app.motor_controller.setVelocityPIDGains( command.left_velocity_pid_gains,
                                                 command.right_velocity_pid_gains );
       app.motor_controller.setPositionPIDGains( command.left_position_pid_gains,
                                                 command.right_position_pid_gains );
-      app.motor_controller.setVelocityFeedForwardGains(
-          command.left_velocity_feed_forward_k_v, command.left_velocity_feed_forward_k_s,
-          command.right_velocity_feed_forward_k_v, command.right_velocity_feed_forward_k_s );
-      app.motor_controller.setRotationalFeedForwardGains(
-          command.left_velocity_feed_forward_k_s_rotational,
-          command.right_velocity_feed_forward_k_s_rotational );
+      app.motor_controller.setVelocityStartupParams(
+          command.left_velocity_startup_gain, command.left_velocity_startup_offset,
+          command.right_velocity_startup_gain, command.right_velocity_startup_offset );
 
-      app.motor_controller.setPositionFeedForwardGains( 0.0f, 0.0f, 0.0f, 0.0f );
       app.time_since_last_command = 0;
       app.status_led.speed = StatusLED::FAST;
+      interrupts();
       app.host_comm.sendObject( AckCommand{ CommandType::CHANGE_PID_GAINS } );
       break;
     }
@@ -149,7 +148,14 @@ void loop()
         break;
       }
       app.enable_debug = settings.enable_debug;
+      noInterrupts();
       app.motor_controller.setDisableAccelerationLimiting( settings.disable_acceleration_limiting );
+      app.motor_controller.setVelocityRampLimits( settings.max_track_acceleration_rad_s2,
+                                                  settings.max_track_deceleration_rad_s2 );
+      app.motor_controller.setVelocityReferenceJerkLimit( settings.max_track_jerk_rad_s3 );
+      app.motor_controller.setDerivativeFilterCutoff( settings.derivative_filter_cutoff_hz,
+                                                      1000000.0f / MAIN_LOOP_PERIOD_US );
+      interrupts();
       app.host_comm.sendObject( AckCommand{ CommandType::UPDATE_SETTINGS } );
       break;
     }
@@ -161,16 +167,21 @@ void loop()
       app.host_comm.skip();
   }
 
-  app.host_comm.sendObject( app.full_motor_status );
+  noInterrupts();
+  const FullMotorStatus full_motor_status = app.full_motor_status;
+  interrupts();
+  app.host_comm.sendObject( full_motor_status );
 
-  if ( const auto error = app.motor_controller.getError();
-       error != MotorError::Error::NO_ERROR && error != app.last_error ) {
+  noInterrupts();
+  const auto error = app.motor_controller.getError();
+  interrupts();
+  if ( error != MotorError::Error::NO_ERROR && error != app.last_error ) {
     app.host_comm.sendObject( MotorError{ error } );
     app.last_error = error;
   }
   if ( app.enable_debug ) {
-    auto debug_data = app.motor_controller.debugData();
     noInterrupts();
+    auto debug_data = app.motor_controller.debugData();
     debug_data.average_loop_time_us = app.average_loop_time_filter.getMean();
     interrupts();
     app.host_comm.sendObject( debug_data );

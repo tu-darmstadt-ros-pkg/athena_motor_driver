@@ -13,36 +13,44 @@ public:
    *          sudden jumps in torque which can cause mechanical stress and instability.
    */
   PIDController( float kp, float ki, float kd, float min_output, float max_output,
-                 float max_output_change );
-  void setGains( float kp, float ki, float kd );
+                 float max_output_change, float kff = 0.0f );
+  void setGains( float kp, float ki, float kd, float kff = 0.0f );
   void setOutputLimits( float min_output, float max_output );
-  void setFeedForwardGains( float k_v, float k_s );
+  void setStartupParams( float gain, float offset = 0.0f );
+  /**
+   * @brief Set derivative low-pass filter cutoff frequency.
+   * @param cutoff_hz  Desired -3 dB frequency of the derivative filter in Hz.
+   * @param sample_hz  Control loop rate in Hz.
+   */
+  void setDerivativeFilterCutoff( float cutoff_hz, float sample_hz );
   void reset();
 
   //! Compute the torque required to reach the goal velocity
-  float computeTorque( float goal, float current );
+  float computeTorque( float goal, float current, float dt );
 
   const PIDDebugData &debugData() const { return debug_data_; }
 
 private:
   PIDDebugData debug_data_;
-  elapsedMicros elapsed_;
   float kp_;
   float ki_;
   float kd_;
+  float kff_;
   float max_output_;
   float min_output_;
   float max_output_change_;
   float last_input_ = 0;
   float last_output_ = 0;
   float integral_ = 0;
+  float filtered_derivative_ = 0;
   float last_error_ = 0;
   bool first_compute_;
-  // Feed-forward control parameters
-  // k_v: Velocity gain - proportional to target velocity
-  // k_s: Static friction gain - constant "push" to overcome static friction
-  float feed_forward_k_v_ = 0.0f;
-  float feed_forward_k_s_ = 0.0f;
+  float startup_gain_ = 0;
+  float startup_offset_ = 0;
+  float derivative_filter_coeff_ = 0.0f;
+
+  float startup_term_ = 0;
+  bool startup_active_ = false;
 };
 
 #endif // ATHENA_MOTOR_FIRMWARE_PID_CONTROLLER_H
