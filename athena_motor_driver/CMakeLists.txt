@@ -16,7 +16,7 @@ find_package(std_srvs REQUIRED)
 find_package(athena_motor_interface REQUIRED)
 
 find_package(PkgConfig)
-pkg_check_modules(SERIAL libserial)
+pkg_check_modules(SERIAL IMPORTED_TARGET libserial)
 
 set(TARGET_NAME athena_motor_driver_component)
 
@@ -36,16 +36,15 @@ target_include_directories(${TARGET_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
-ament_target_dependencies(${TARGET_NAME}
-  athena_motor_interface
-  geometry_msgs
-  hector_ros2_utils
-  rclcpp
-  rclcpp_components
-  rclcpp_lifecycle
-  std_srvs
-  SERIAL
-)
+target_link_libraries(${TARGET_NAME}
+                      athena_motor_interface::athena_motor_interface
+                      geometry_msgs::geometry_msgs
+                      hector_ros2_utils::hector_ros2_utils
+                      rclcpp::rclcpp
+                      rclcpp_components::component
+                      rclcpp_lifecycle::rclcpp_lifecycle
+                      std_srvs::std_srvs
+                      PkgConfig::SERIAL)
 
 install(TARGETS ${TARGET_NAME}
   ARCHIVE DESTINATION lib
